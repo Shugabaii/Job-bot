@@ -170,22 +170,26 @@ class _DashboardState extends State<Dashboard> {
     return Scaffold(
       appBar: AppBar(
         title: Row(children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                )
-              ],
-            ),
-            child: const Center(
-              child: Text('C', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.asset(
+              'assets/icon.png',
+              width: 38,
+              height: 38,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Center(
+                    child: Text('C', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                  ),
+                );
+              },
             ),
           ),
           const SizedBox(width: 12),
