@@ -1,66 +1,31 @@
-name: Build CareerPilot AI APK
+name: careerpilot_ai
+description: "CareerPilot AI - Professional Outreach Dashboard"
+publish_to: 'none'
+version: 4.0.0+4
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+environment:
+  sdk: ^3.9.0
 
-permissions:
-  contents: write
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  cupertino_icons: ^1.0.8
+  firebase_core: ^3.8.0
+  cloud_firestore: ^5.4.0
 
-jobs:
-  build:
-    name: Build & Release APK
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.3
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon.png
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.35.4'
-          channel: 'stable'
-          cache: true
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Generate App Icon
-        run: flutter pub run flutter_launcher_icons
-
-      - name: Analyze code
-        run: flutter analyze || echo "Analyze warnings - continue"
-
-      - name: Run tests
-        run: flutter test || echo "No tests yet - skipping"
-
-      - name: Build Release APK - Split per ABI
-        run: flutter build apk --release --split-per-abi --dart-define=BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
-
-      - name: List APKs
-        run: ls -lh build/app/outputs/flutter-apk/
-
-      - name: Upload CareerPilot AI APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: CareerPilot-AI-APK
-          path: build/app/outputs/flutter-apk/*.apk
-          retention-days: 30
-
-      - name: Create GitHub Release
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: CareerPilot AI v1.0.${{ github.run_number }}
-          files: build/app/outputs/flutter-apk/*.apk
-          generate_release_notes: true
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"
