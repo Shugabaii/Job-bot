@@ -23,7 +23,7 @@ jobs:
       - run: flutter clean
       - run: flutter pub get
       - run: dart run flutter_launcher_icons
-      - run: flutter build apk --release --android-skip-build-dependency-validation
+      - run: flutter build apk --release --android-skip-build-dependency-validation --dart-define=BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
       - uses: actions/upload-artifact@v4
         with:
           name: CareerPilot-AI-APK
