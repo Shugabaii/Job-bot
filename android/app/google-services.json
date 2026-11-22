@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "637625683581",
+    "project_id": "dl4all-a38ef",
+    "storage_bucket": "dl4all-a38ef.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:637625683581:android:4edb998d2359918e79ab14",
+        "android_client_info": {
+          "package_name": "com.example.careerpilot_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGybXjAlVtf8kZgXwBHHfInRkMTTC79dU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:637625683581:android:a2994657d303b2b079ab14",
+        "android_client_info": {
+          "package_name": "com.example.dl4all_attendance"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGybXjAlVtf8kZgXwBHHfInRkMTTC79dU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:637625683581:android:6c4bdc2008aefe4979ab14",
+        "android_client_info": {
+          "package_name": "com.fstc.jalingo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGybXjAlVtf8kZgXwBHHfInRkMTTC79dU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
