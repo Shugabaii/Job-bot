@@ -379,6 +379,129 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
+  // ================= FOLLOW-UP DETAIL - V40 - NEW =================
+  // Reads jobs_followups - shows Exact copy of follow-up email on tap.
+  // If body missing (old data), shows Preview template.
+  String _buildFollowupBody(Map<String, dynamic> j) {
+    final saved = (j['email_body'] ?? j['body'] ?? j['message'] ?? '').toString().trim();
+    if (saved.isNotEmpty) return saved;
+    final company = (j['company'] ?? 'your team').toString();
+    return "Hello $company,\n\nFollowing up on my email from a few days ago.\n\nI shared a quick idea to build a small Flutter demo showing your core product working on mobile in 1 week.\n\nIf it would be helpful, I can send the demo for your review. Just let me know.\n\nThank you for your time,\n\nHabibu Armayau Isah\nSoftware Developer (Flutter, Web, Backend & AI) | Kano, Nigeria\nPhone / WhatsApp: +234 806 539 5103";
+  }
+
+  String _buildFollowupSubject(Map<String, dynamic> j) {
+    final saved = (j['subject'] ?? '').toString().trim();
+    if (saved.isNotEmpty) return saved;
+    final company = (j['company'] ?? '').toString();
+    return "Re: Quick idea for $company - still interested?";
+  }
+
+  void _showFollowupDetail(Map<String, dynamic> j) {
+    final company = (j['company'] ?? 'Unknown').toString();
+    final email = (j['email'] ?? '').toString();
+    final jobType = (j['job_type'] ?? 'FLUTTER').toString();
+    final dateStr = _formatDate(j['timestamp']);
+    final subject = _buildFollowupSubject(j);
+    final body = _buildFollowupBody(j);
+    final isReal = (j['email_body'] ?? j['body'] ?? '').toString().trim().isNotEmpty;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111827),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (ctx2, scrollCtrl) => SingleChildScrollView(
+          controller: scrollCtrl,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4)))),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.reply_outlined, color: Color(0xFF3B82F6), size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(company, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+                        const SizedBox(height: 2),
+                        Text(email, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                    child: Text('FOLLOW-UP', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF60A5FA))),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: const Color(0xFF090D16), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _detailRow('To', email),
+                    const SizedBox(height: 6),
+                    _detailRow('Date', dateStr.isEmpty ? 'Unknown' : dateStr),
+                    const SizedBox(height: 6),
+                    _detailRow('Subject', subject),
+                    const SizedBox(height: 6),
+                    _detailRow('Type', 'Follow-up • $jobType'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Follow-up Message', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: isReal ? const Color(0xFF1E3A8A) : const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4)),
+                    child: Text(isReal ? 'Exact copy' : 'Preview', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: isReal ? const Color(0xFF93C5FD) : const Color(0xFF9CA3AF))),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                child: SelectableText(body, style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.6)),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  // ================= END FOLLOW-UP DETAIL =================
+
   Widget _detailRow(String label, String value) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -984,6 +1107,81 @@ class _DashboardState extends State<Dashboard> {
                 );
               },
             ),
+
+            const SizedBox(height: 24),
+
+            // ================= FOLLOW-UPS - V40 - NEW =================
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              const Text('Follow-ups', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('jobs_followups').snapshots(),
+                builder: (context, s) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(6)), child: Text('${s.data?.docs.length ?? 0} total • Tap to view follow-up', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500))),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('jobs_followups').snapshots(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFF3B82F6), strokeWidth: 2)));
+                }
+                var docs = snap.data?.docs ?? [];
+                if (docs.isEmpty) {
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Center(child: Column(children: [Container(padding: const EdgeInsets.all(10), decoration: const BoxDecoration(color: Color(0xFF1F2937), shape: BoxShape.circle), child: const Icon(Icons.reply_outlined, size: 22, color: Color(0xFF9CA3AF))), const SizedBox(height: 10), const Text('No follow-ups sent yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)), const SizedBox(height: 4), const Text('Bot sends 1 professional follow-up 3 days after 1st email.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11), textAlign: TextAlign.center)])),
+                    ),
+                  );
+                }
+                docs.sort((a, b) {
+                  final ad = (a.data() as Map<String, dynamic>)['timestamp']?.toString() ?? '';
+                  final bd = (b.data() as Map<String, dynamic>)['timestamp']?.toString() ?? '';
+                  return bd.compareTo(ad);
+                });
+                // Apply same search filter as All Companies
+                if (searchQuery.isNotEmpty) {
+                  docs = docs.where((d) {
+                    final j = d.data() as Map<String, dynamic>;
+                    final c = (j['company'] ?? '').toString().toLowerCase();
+                    final e = (j['email'] ?? '').toString().toLowerCase();
+                    return c.contains(searchQuery) || e.contains(searchQuery);
+                  }).toList();
+                }
+                if (docs.isEmpty) {
+                  return const Card(child: Padding(padding: EdgeInsets.all(20), child: Center(child: Text('No follow-up found.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
+                }
+                return Column(
+                  children: docs.map((d) {
+                    final j = d.data() as Map<String, dynamic>;
+                    final company = (j['company'] ?? 'Unknown').toString();
+                    final email = (j['email'] ?? '').toString();
+                    final jobType = (j['job_type'] ?? 'FLUTTER').toString();
+                    final shortDate = _formatDate(j['timestamp']);
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+                      child: ListTile(
+                        onTap: () => _showFollowupDetail(j),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                        leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.reply_outlined, color: Color(0xFF3B82F6), size: 16)),
+                        title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Padding(padding: const EdgeInsets.only(top: 2), child: Text('$email • $shortDate', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: Text('FOLLOW-UP', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF60A5FA)))),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+            // ================= END FOLLOW-UPS =================
 
             const SizedBox(height: 24),
 
