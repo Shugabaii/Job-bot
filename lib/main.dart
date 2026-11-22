@@ -23,11 +23,11 @@ class CareerPilotApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF090D16), // Deep Slate Navy Obsidian
+        scaffoldBackgroundColor: const Color(0xFF090D16),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF10B981),   // Emerald Accent
-          secondary: Color(0xFF3B82F6), // Electric Blue Accent
-          surface: Color(0xFF111827),   // Elevated Card Surface
+          primary: Color(0xFF10B981),
+          secondary: Color(0xFF3B82F6),
+          surface: Color(0xFF111827),
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF090D16),
@@ -62,12 +62,20 @@ class _DashboardState extends State<Dashboard> {
   String filter = 'All';
 
   @override
-  void initState() { super.initState(); fetchEvents(); }
+  void initState() {
+    super.initState();
+    fetchEvents();
+  }
 
   Future<void> fetchEvents() async {
-    setState(() { loading = true; error = ''; });
+    setState(() {
+      loading = true;
+      error = '';
+    });
     if (apiKey.isEmpty) {
-      setState(() { loading = false; });
+      setState(() {
+        loading = false;
+      });
       return;
     }
     try {
@@ -77,12 +85,19 @@ class _DashboardState extends State<Dashboard> {
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        setState(() { events = data['events'] ?? []; loading = false; });
+        setState(() {
+          events = data['events'] ?? [];
+          loading = false;
+        });
       } else {
-        setState(() { loading = false; });
+        setState(() {
+          loading = false;
+        });
       }
     } catch (_) {
-      setState(() { loading = false; });
+      setState(() {
+        loading = false;
+      });
     }
   }
 
@@ -95,31 +110,52 @@ class _DashboardState extends State<Dashboard> {
 
   Color colorFor(String event) {
     switch (event.toLowerCase()) {
-      case 'opened': return const Color(0xFF10B981);
-      case 'clicked': return const Color(0xFF3B82F6);
-      case 'delivered': return const Color(0xFFA78BFA);
-      case 'bounce': case 'softbounce': case 'hardbounce': return const Color(0xFFEF4444);
-      default: return const Color(0xFF9CA3AF);
+      case 'opened':
+        return const Color(0xFF10B981);
+      case 'clicked':
+        return const Color(0xFF3B82F6);
+      case 'delivered':
+        return const Color(0xFFA78BFA);
+      case 'bounce':
+      case 'softbounce':
+      case 'hardbounce':
+        return const Color(0xFFEF4444);
+      default:
+        return const Color(0xFF9CA3AF);
     }
   }
 
   IconData iconFor(String event) {
     switch (event.toLowerCase()) {
-      case 'opened': return Icons.visibility_outlined;
-      case 'clicked': return Icons.ads_click_outlined;
-      case 'delivered': return Icons.check_circle_outline;
-      case 'bounce': case 'softbounce': case 'hardbounce': return Icons.error_outline;
-      default: return Icons.mail_outline;
+      case 'opened':
+        return Icons.visibility_outlined;
+      case 'clicked':
+        return Icons.ads_click_outlined;
+      case 'delivered':
+        return Icons.check_circle_outline;
+      case 'bounce':
+      case 'softbounce':
+      case 'hardbounce':
+        return Icons.error_outline;
+      default:
+        return Icons.mail_outline;
     }
   }
 
   String labelFor(String event) {
     switch (event.toLowerCase()) {
-      case 'opened': return 'Opened';
-      case 'clicked': return 'Clicked';
-      case 'delivered': return 'Delivered';
-      case 'bounce': case 'softbounce': case 'hardbounce': return 'Bounced';
-      default: return event;
+      case 'opened':
+        return 'Opened';
+      case 'clicked':
+        return 'Clicked';
+      case 'delivered':
+        return 'Delivered';
+      case 'bounce':
+      case 'softbounce':
+      case 'hardbounce':
+        return 'Bounced';
+      default:
+        return event;
     }
   }
 
@@ -134,13 +170,22 @@ class _DashboardState extends State<Dashboard> {
       appBar: AppBar(
         title: Row(children: [
           Container(
-            width: 38, height: 38,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
               borderRadius: BorderRadius.circular(10),
-              boxShadow: [BoxShadow(color: const Color(0xFF10B981).withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 2))],
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                )
+              ],
             ),
-            child: const Center(child: Text('C', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18))),
+            child: const Center(
+              child: Text('C', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+            ),
           ),
           const SizedBox(width: 12),
           const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -154,14 +199,14 @@ class _DashboardState extends State<Dashboard> {
             margin: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFF064E3B).withValues(alpha: 0.6), 
+              color: const Color(0xFF064E3B).withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(100),
               border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
             ),
             child: const Row(children: [
-              Icon(Icons.circle, size: 6, color: Color(0xFF10B981)), 
-              SizedBox(width: 6), 
-              Text('Operational', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF34D399), letterSpacing: 0.2))
+              Icon(Icons.circle, size: 6, color: Color(0xFF10B981)),
+              SizedBox(width: 6),
+              Text('Operational', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF34D399), letterSpacing: 0.2)),
             ]),
           ),
         ],
@@ -175,7 +220,6 @@ class _DashboardState extends State<Dashboard> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Overview Header
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Overview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.3)),
@@ -183,10 +227,10 @@ class _DashboardState extends State<Dashboard> {
                 Text('Real-time telemetry and automation performance', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
               ]),
               IconButton(
-                onPressed: fetchEvents, 
-                icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF9CA3AF)), 
+                onPressed: fetchEvents,
+                icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF9CA3AF)),
                 style: IconButton.styleFrom(
-                  backgroundColor: const Color(0xFF111827), 
+                  backgroundColor: const Color(0xFF111827),
                   side: const BorderSide(color: Color(0xFF1F2937)),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
@@ -207,7 +251,13 @@ class _DashboardState extends State<Dashboard> {
                     color: const Color(0xFF111827),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFF1F2937)),
-                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(18),
@@ -215,32 +265,44 @@ class _DashboardState extends State<Dashboard> {
                       Row(children: [
                         Container(
                           padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           child: const Icon(Icons.bolt, size: 16, color: Color(0xFF10B981)),
                         ),
                         const SizedBox(width: 10),
                         const Text('Bot Status — Live from Firebase', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.1)),
                         const Spacer(),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), 
-                          decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), 
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)),
                           child: const Text('LIVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF34D399), letterSpacing: 0.5)),
                         ),
                       ]),
                       const SizedBox(height: 18),
                       Row(children: [
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('$sentToday', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5)),
-                          const SizedBox(height: 2),
-                          const Text('Sent Today', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500)),
-                        ])),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('$sentToday', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5)),
+                            const SizedBox(height: 2),
+                            const Text('Sent Today', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500)),
+                          ]),
+                        ),
                         Container(width: 1, height: 35, color: const Color(0xFF1F2937)),
                         const SizedBox(width: 16),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(lastCompany.length > 18 ? '${lastCompany.substring(0, 18)}...' : lastCompany, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: 2),
-                          const Text('Last Activity', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500)),
-                        ])),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(
+                              lastCompany.length > 18 ? '${lastCompany.substring(0, 18)}...' : lastCompany,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            const Text('Last Activity', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500)),
+                          ]),
+                        ),
                       ]),
                       const SizedBox(height: 14),
                       Container(
@@ -287,7 +349,7 @@ class _DashboardState extends State<Dashboard> {
             const SizedBox(height: 10),
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(16), 
+                padding: const EdgeInsets.all(16),
                 child: Column(children: [
                   _systemRow('Email Delivery Service (Brevo)', 'Operational', true),
                   const Divider(height: 24, color: Color(0xFF1F2937)),
@@ -324,51 +386,60 @@ class _DashboardState extends State<Dashboard> {
                 if (docs.isEmpty) {
                   return Card(
                     child: Padding(
-                      padding: const EdgeInsets.all(32), 
-                      child: Center(child: Column(children: [
-                        Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: Color(0xFF1F2937), shape: BoxShape.circle), child: const Icon(Icons.inbox_outlined, size: 24, color: Color(0xFF9CA3AF))),
-                        const SizedBox(height: 12), 
-                        const Text('No jobs sent yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)), 
-                        const SizedBox(height: 4), 
-                        const Text('Your bot will save job execution entries here automatically.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12), textAlign: TextAlign.center),
-                      ])),
+                      padding: const EdgeInsets.all(32),
+                      child: Center(
+                        child: Column(children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: const BoxDecoration(color: Color(0xFF1F2937), shape: BoxShape.circle),
+                            child: const Icon(Icons.inbox_outlined, size: 24, color: Color(0xFF9CA3AF)),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text('No jobs sent yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)),
+                          const SizedBox(height: 4),
+                          const Text('Your bot will save job execution entries here automatically.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12), textAlign: TextAlign.center),
+                        ]),
+                      ),
                     ),
                   );
                 }
-                return Column(children: docs.map((d) {
-                  final j = d.data() as Map<String, dynamic>;
-                  final company = (j['company'] ?? 'Unknown').toString();
-                  final email = (j['email'] ?? '').toString();
-                  final jobType = (j['job_type'] ?? 'FLUTTER').toString();
-                  final ts = (j['timestamp'] ?? '').toString();
-                  final shortDate = ts.length > 16 ? ts.substring(0, 16).replaceAll('T', ' ') : ts;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF111827), 
-                      borderRadius: BorderRadius.circular(12), 
-                      border: Border.all(color: const Color(0xFF1F2937)),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                      leading: Container(
-                        width: 36, height: 36, 
-                        decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), 
-                        child: const Icon(Icons.send_outlined, color: Color(0xFF10B981), size: 16),
+                return Column(
+                  children: docs.map((d) {
+                    final j = d.data() as Map<String, dynamic>;
+                    final company = (j['company'] ?? 'Unknown').toString();
+                    final email = (j['email'] ?? '').toString();
+                    final jobType = (j['job_type'] ?? 'FLUTTER').toString();
+                    final ts = (j['timestamp'] ?? '').toString();
+                    final shortDate = ts.length > 16 ? ts.substring(0, 16).replaceAll('T', ' ') : ts;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF111827),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF1F2937)),
                       ),
-                      title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      subtitle: Padding(
-                        padding: const EdgeInsets.only(top: 2), 
-                        child: Text('$email • $shortDate', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.send_outlined, color: Color(0xFF10B981), size: 16),
+                        ),
+                        title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text('$email • $shortDate', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                        ),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                          child: Text(jobType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34D399))),
+                        ),
                       ),
-                      trailing: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), 
-                        decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), 
-                        child: Text(jobType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34D399))),
-                      ),
-                    ),
-                  );
-                }).toList());
+                    );
+                  }).toList(),
+                );
               },
             ),
 
@@ -382,37 +453,41 @@ class _DashboardState extends State<Dashboard> {
             const SizedBox(height: 10),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Row(children: ['All', 'Opened', 'Delivered', 'Clicked', 'Bounce'].map((f) {
-                final active = filter == f;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: () => setState(() => filter = f),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: active ? Colors.white : const Color(0xFF111827),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: active ? Colors.white : const Color(0xFF1F2937)),
+              child: Row(
+                children: ['All', 'Opened', 'Delivered', 'Clicked', 'Bounce'].map((f) {
+                  final active = filter == f;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => setState(() => filter = f),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: active ? Colors.white : const Color(0xFF111827),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: active ? Colors.white : const Color(0xFF1F2937)),
+                        ),
+                        child: Text(f, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: active ? Colors.black : const Color(0xFF9CA3AF))),
                       ),
-                      child: Text(f, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: active ? Colors.black : const Color(0xFF9CA3AF))),
                     ),
-                  ),
-                );
-              }).toList()),
+                  );
+                }).toList(),
+              ),
             ),
             const SizedBox(height: 10),
             if (filteredBrevo.isEmpty)
-              Card(
+              const Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(24), 
-                  child: Center(child: Column(children: [
-                    const Icon(Icons.mail_outline, size: 24, color: Color(0xFF6B7280)), 
-                    const SizedBox(height: 8), 
-                    const Text('No email events yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)), 
-                    const SizedBox(height: 2), 
-                    const Text('Add BREVO_API_KEY parameter to monitor opens and clicks.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11), textAlign: TextAlign.center),
-                  ])),
+                  padding: EdgeInsets.all(24),
+                  child: Center(
+                    child: Column(children: [
+                      Icon(Icons.mail_outline, size: 24, color: Color(0xFF6B7280)),
+                      SizedBox(height: 8),
+                      Text('No email events yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)),
+                      SizedBox(height: 2),
+                      Text('Add BREVO_API_KEY parameter to monitor opens and clicks.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11), textAlign: TextAlign.center),
+                    ]),
+                  ),
                 ),
               )
             else
@@ -425,25 +500,26 @@ class _DashboardState extends State<Dashboard> {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF111827), 
-                    borderRadius: BorderRadius.circular(12), 
+                    color: const Color(0xFF111827),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFF1F2937)),
                   ),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                     leading: Container(
-                      width: 36, height: 36, 
-                      decoration: BoxDecoration(color: colorFor(ev).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), 
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(color: colorFor(ev).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                       child: Icon(iconFor(ev), color: colorFor(ev), size: 16),
                     ),
                     title: Text(email, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 2), 
+                      padding: const EdgeInsets.only(top: 2),
                       child: Text('$subject • $shortDate', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
                     ),
                     trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), 
-                      decoration: BoxDecoration(color: colorFor(ev).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), 
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: colorFor(ev).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
                       child: Text(labelFor(ev), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: colorFor(ev))),
                     ),
                   ),
@@ -453,7 +529,7 @@ class _DashboardState extends State<Dashboard> {
             const SizedBox(height: 32),
             const Center(
               child: Text(
-                'CareerPilot AI • v4.0 — Connected to Bot v22', 
+                'CareerPilot AI • v4.0 — Connected to Bot v22',
                 style: TextStyle(fontSize: 11, color: Color(0xFF6B7280), letterSpacing: 0.2),
               ),
             ),
@@ -467,7 +543,7 @@ class _DashboardState extends State<Dashboard> {
     return Expanded(
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.all(16), 
+          padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Container(
