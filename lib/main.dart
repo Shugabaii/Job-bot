@@ -138,7 +138,7 @@ class _DashboardState extends State<Dashboard> {
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
               borderRadius: BorderRadius.circular(10),
-              boxShadow: [BoxShadow(color: const Color(0xFF10B981).withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 2))],
+              boxShadow: [BoxShadow(color: const Color(0xFF10B981).withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 2))],
             ),
             child: const Center(child: Text('C', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18))),
           ),
@@ -154,9 +154,9 @@ class _DashboardState extends State<Dashboard> {
             margin: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFF064E3B).withOpacity(0.6), 
+              color: const Color(0xFF064E3B).withValues(alpha: 0.6), 
               borderRadius: BorderRadius.circular(100),
-              border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
             ),
             child: const Row(children: [
               Icon(Icons.circle, size: 6, color: Color(0xFF10B981)), 
@@ -207,7 +207,7 @@ class _DashboardState extends State<Dashboard> {
                     color: const Color(0xFF111827),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFF1F2937)),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))],
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(18),
@@ -215,7 +215,7 @@ class _DashboardState extends State<Dashboard> {
                       Row(children: [
                         Container(
                           padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                          decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                           child: const Icon(Icons.bolt, size: 16, color: Color(0xFF10B981)),
                         ),
                         const SizedBox(width: 10),
@@ -326,7 +326,7 @@ class _DashboardState extends State<Dashboard> {
                     child: Padding(
                       padding: const EdgeInsets.all(32), 
                       child: Center(child: Column(children: [
-                        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFF1F2937), shape: BoxShape.circle), child: const Icon(Icons.inbox_outlined, size: 24, color: Color(0xFF9CA3AF))),
+                        Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: Color(0xFF1F2937), shape: BoxShape.circle), child: const Icon(Icons.inbox_outlined, size: 24, color: Color(0xFF9CA3AF))),
                         const SizedBox(height: 12), 
                         const Text('No jobs sent yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)), 
                         const SizedBox(height: 4), 
@@ -353,7 +353,7 @@ class _DashboardState extends State<Dashboard> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                       leading: Container(
                         width: 36, height: 36, 
-                        decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.1), borderRadius: BorderRadius.circular(8)), 
+                        decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), 
                         child: const Icon(Icons.send_outlined, color: Color(0xFF10B981), size: 16),
                       ),
                       title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -363,7 +363,7 @@ class _DashboardState extends State<Dashboard> {
                       ),
                       trailing: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), 
-                        decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.1), borderRadius: BorderRadius.circular(6)), 
+                        decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), 
                         child: Text(jobType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34D399))),
                       ),
                     ),
@@ -433,7 +433,7 @@ class _DashboardState extends State<Dashboard> {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                     leading: Container(
                       width: 36, height: 36, 
-                      decoration: BoxDecoration(color: colorFor(ev).withOpacity(0.1), borderRadius: BorderRadius.circular(8)), 
+                      decoration: BoxDecoration(color: colorFor(ev).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), 
                       child: Icon(iconFor(ev), color: colorFor(ev), size: 16),
                     ),
                     title: Text(email, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -443,7 +443,7 @@ class _DashboardState extends State<Dashboard> {
                     ),
                     trailing: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), 
-                      decoration: BoxDecoration(color: colorFor(ev).withOpacity(0.1), borderRadius: BorderRadius.circular(6)), 
+                      decoration: BoxDecoration(color: colorFor(ev).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), 
                       child: Text(labelFor(ev), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: colorFor(ev))),
                     ),
                   ),
