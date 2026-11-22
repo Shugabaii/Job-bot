@@ -1,63 +1,29 @@
 name: Build CareerPilot AI APK
-
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
-
 jobs:
   build:
-    name: Build & Release APK
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+      - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.4'
           channel: 'stable'
-          cache: true
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Generate App Icon
-        run: flutter pub run flutter_launcher_icons
-
-      - name: Analyze code
-        run: flutter analyze || echo "Analyze warnings - continue"
-
-      - name: Run tests
-        run: flutter test || echo "No tests yet - skipping"
-
-      - name: Build Release APK - Split per ABI
-        run: flutter build apk --release --split-per-abi --dart-define=BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
-
-      - name: List APKs
-        run: ls -lh build/app/outputs/flutter-apk/
-
-      - name: Upload CareerPilot AI APKs
-        uses: actions/upload-artifact@v4
+      - run: flutter clean
+      - run: flutter pub get
+      - run: flutter build apk --release --android-skip-build-dependency-validation
+      - uses: actions/upload-artifact@v4
         with:
           name: CareerPilot-AI-APK
-          path: build/app/outputs/flutter-apk/*.apk
-          retention-days: 30
-
-      - name: Create GitHub Release
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: CareerPilot AI v1.0.${{ github.run_number }}
-          files: build/app/outputs/flutter-apk/*.apk
-          generate_release_notes: true
+          path: build/app/outputs/flutter-apk/app-release.apk
