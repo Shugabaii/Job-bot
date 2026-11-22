@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.dl4all_attendance"
+    namespace = "com.example.job_bot_dashboard"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "28.2.13676358"
 
