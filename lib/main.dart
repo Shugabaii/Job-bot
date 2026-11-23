@@ -1,9 +1,11 @@
 import 'dart:convert';
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -66,6 +68,8 @@ class _DashboardState extends State<Dashboard> {
   String error = '';
   String filter = 'All';
   String searchQuery = '';
+  int _jobsLimit = 20;
+  int _followupsLimit = 20;
 
   @override
   void initState() {
@@ -104,6 +108,81 @@ class _DashboardState extends State<Dashboard> {
       setState(() {
         loading = false;
       });
+    }
+  }
+
+  // ================= PHONE & WHATSAPP HELPERS =================
+  String _cleanPhone(dynamic raw) {
+    if (raw == null) return '';
+    return raw.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  String _phoneDigits(String phone) {
+    final cleaned = phone.trim();
+    if (cleaned.isEmpty) return '';
+    final hasPlus = cleaned.startsWith('+');
+    var digits = cleaned.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return '';
+    if (!hasPlus && digits.startsWith('0') && digits.length == 11) {
+      digits = '234${digits.substring(1)}';
+    }
+    return digits;
+  }
+
+  String _whatsAppMessage(String company) {
+    final name = company.trim().isEmpty ? 'there' : company.trim();
+    return 'Hi $name team, I sent you an email a few days ago about a Flutter demo showing how your product can work on mobile in 1 week.';
+  }
+
+  Future<void> _copyPhone(String phone) async {
+    final clean = _cleanPhone(phone);
+    if (clean.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: clean));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Copied phone: $clean'),
+          backgroundColor: const Color(0xFF10B981),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openWhatsApp(String phone, String company) async {
+    final digits = _phoneDigits(phone);
+    if (digits.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid phone number for WhatsApp.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    final text = Uri.encodeComponent(_whatsAppMessage(company));
+    final uri = Uri.parse('https://wa.me/$digits?text=$text');
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open WhatsApp.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error launching WhatsApp.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -156,12 +235,15 @@ class _DashboardState extends State<Dashboard> {
         return 'Clicked';
       case 'delivered':
         return 'Delivered';
+      case 'request':
+      case 'requests':
+        return 'Sent';
       case 'bounce':
       case 'softbounce':
       case 'hardbounce':
         return 'Bounced';
       default:
-        return event;
+        return 'Sent';
     }
   }
 
@@ -195,10 +277,6 @@ class _DashboardState extends State<Dashboard> {
   }
 
   // ================= EMAIL DETAIL - TAP TO VIEW - MERGED =================
-  // V39: Merges jobs_sent + jobs_sent_details
-  // jobs_sent = company, email, date
-  // jobs_sent_details = exact email_body, subject, why saved by new mailer.py
-  // If details exist -> Exact copy. If not (old email) -> Preview template.
   String _buildEmailBody(Map<String, dynamic> j) {
     final saved = (j['email_body'] ?? j['message'] ?? j['body'] ?? j['email_text'] ?? '').toString().trim();
     if (saved.isNotEmpty) return saved;
@@ -221,56 +299,134 @@ class _DashboardState extends State<Dashboard> {
     return "Flutter + AI Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
-  Future<Map<String, dynamic>> _fetchMergedDetail(Map<String, dynamic> j) async {
+  Future> _fetchMergedDetail(Map<String, dynamic> j) async {
     final merged = Map<String, dynamic>.from(j);
-    // If jobs_sent already has body, no need to fetch details
     final hasBody = (merged['email_body'] ?? merged['body'] ?? '').toString().trim().isNotEmpty;
-    if (hasBody) return merged;
+    final hasPhone = _cleanPhone(merged['phone']).isNotEmpty;
+    if (hasBody && hasPhone) return merged;
     try {
       final company = (j['company'] ?? '').toString();
       final email = (j['email'] ?? '').toString();
-      if (company.isEmpty || email.isEmpty) return merged;
-      // Try exact match: company + email
-      final q = await FirebaseFirestore.instance
-          .collection('jobs_sent_details')
-          .where('company', isEqualTo: company)
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
+      if (company.isEmpty && email.isEmpty) return merged;
+      final q = (company.isNotEmpty && email.isNotEmpty)
+          ? await FirebaseFirestore.instance
+              .collection('jobs_sent_details')
+              .where('company', isEqualTo: company)
+              .where('email', isEqualTo: email)
+              .limit(1)
+              .get()
+          : await FirebaseFirestore.instance
+              .collection('jobs_sent_details')
+              .where('company', isEqualTo: company)
+              .limit(1)
+              .get();
       if (q.docs.isNotEmpty) {
         final d = q.docs.first.data();
-        if ((d['email_body'] ?? '').toString().trim().isNotEmpty) merged['email_body'] = d['email_body'];
-        if ((d['body'] ?? '').toString().trim().isNotEmpty && merged['email_body'] == null) merged['email_body'] = d['body'];
-        if ((d['subject'] ?? '').toString().trim().isNotEmpty) merged['subject'] = d['subject'];
-        if ((d['why'] ?? '').toString().trim().isNotEmpty) merged['why'] = d['why'];
+        if (!hasBody) {
+          if ((d['email_body'] ?? '').toString().trim().isNotEmpty) merged['email_body'] = d['email_body'];
+          if ((d['body'] ?? '').toString().trim().isNotEmpty && merged['email_body'] == null) merged['body'] = d['body'];
+          if ((d['subject'] ?? '').toString().trim().isNotEmpty) merged['subject'] = d['subject'];
+          if ((d['why'] ?? '').toString().trim().isNotEmpty) merged['why'] = d['why'];
+        }
+        if (!hasPhone && _cleanPhone(d['phone']).isNotEmpty) {
+          merged['phone'] = _cleanPhone(d['phone']);
+        }
         return merged;
       }
-      // Fallback: try company only (in case email case differs)
-      final q2 = await FirebaseFirestore.instance
-          .collection('jobs_sent_details')
-          .where('company', isEqualTo: company)
-          .limit(1)
-          .get();
-      if (q2.docs.isNotEmpty) {
-        final d = q2.docs.first.data();
-        if ((d['email_body'] ?? '').toString().trim().isNotEmpty) merged['email_body'] = d['email_body'];
-        if ((d['subject'] ?? '').toString().trim().isNotEmpty) merged['subject'] = d['subject'];
-        if ((d['why'] ?? '').toString().trim().isNotEmpty) merged['why'] = d['why'];
+      if (company.isNotEmpty) {
+        final q2 = await FirebaseFirestore.instance
+            .collection('jobs_sent_details')
+            .where('company', isEqualTo: company)
+            .limit(1)
+            .get();
+        if (q2.docs.isNotEmpty) {
+          final d = q2.docs.first.data();
+          if ((d['email_body'] ?? '').toString().trim().isNotEmpty) merged['email_body'] = d['email_body'];
+          if ((d['subject'] ?? '').toString().trim().isNotEmpty) merged['subject'] = d['subject'];
+          if ((d['why'] ?? '').toString().trim().isNotEmpty) merged['why'] = d['why'];
+          if (!hasPhone && _cleanPhone(d['phone']).isNotEmpty) {
+            merged['phone'] = _cleanPhone(d['phone']);
+          }
+        }
       }
-    } catch (_) {
-      // If details fetch fails, just show Preview - never crash
-    }
+    } catch (_) {}
     return merged;
   }
 
+  Widget _phoneActionCard(String phone, String company) {
+    final clean = _cleanPhone(phone);
+    if (clean.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF090D16),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF1F2937)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.phone_outlined, size: 15, color: Color(0xFF10B981)),
+              const SizedBox(width: 8),
+              const Text('Phone', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w600)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SelectableText(
+                  clean,
+                  style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Copy number',
+                onPressed: () => _copyPhone(clean),
+                icon: const Icon(Icons.copy_outlined, size: 18, color: Color(0xFF9CA3AF)),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () => _openWhatsApp(clean, company),
+                  icon: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 16),
+                  label: const Text('WhatsApp Follow-up', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF1F2937)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => _copyPhone(clean),
+                icon: const Icon(Icons.copy, color: Color(0xFF9CA3AF), size: 15),
+                label: const Text('Copy', style: TextStyle(color: Colors.white, fontSize: 12)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showEmailDetail(Map<String, dynamic> j) {
-    // Show loading first, then fetch exact body from jobs_sent_details
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF111827),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
+      builder: (ctx) => FutureBuilder>(
         future: _fetchMergedDetail(j),
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -282,6 +438,7 @@ class _DashboardState extends State<Dashboard> {
           final merged = snap.data ?? j;
           final company = (merged['company'] ?? 'Unknown').toString();
           final email = (merged['email'] ?? '').toString();
+          final phone = _cleanPhone(merged['phone']);
           final jobType = (merged['job_type'] ?? 'FLUTTER').toString();
           final dateStr = _formatDate(merged['timestamp']);
           final subject = _buildSubject(merged);
@@ -341,6 +498,7 @@ class _DashboardState extends State<Dashboard> {
                       ],
                     ),
                   ),
+                  _phoneActionCard(phone, company),
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -380,8 +538,6 @@ class _DashboardState extends State<Dashboard> {
   }
 
   // ================= FOLLOW-UP DETAIL - V40 - NEW =================
-  // Reads jobs_followups - shows Exact copy of follow-up email on tap.
-  // If body missing (old data), shows Preview template.
   String _buildFollowupBody(Map<String, dynamic> j) {
     final saved = (j['email_body'] ?? j['body'] ?? j['message'] ?? '').toString().trim();
     if (saved.isNotEmpty) return saved;
@@ -399,6 +555,7 @@ class _DashboardState extends State<Dashboard> {
   void _showFollowupDetail(Map<String, dynamic> j) {
     final company = (j['company'] ?? 'Unknown').toString();
     final email = (j['email'] ?? '').toString();
+    final phone = _cleanPhone(j['phone']);
     final jobType = (j['job_type'] ?? 'FLUTTER').toString();
     final dateStr = _formatDate(j['timestamp']);
     final subject = _buildFollowupSubject(j);
@@ -443,7 +600,7 @@ class _DashboardState extends State<Dashboard> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                    child: Text('FOLLOW-UP', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF60A5FA))),
+                    child: const Text('FOLLOW-UP', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF60A5FA))),
                   ),
                 ],
               ),
@@ -465,6 +622,7 @@ class _DashboardState extends State<Dashboard> {
                   ],
                 ),
               ),
+              _phoneActionCard(phone, company),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -500,7 +658,6 @@ class _DashboardState extends State<Dashboard> {
       ),
     );
   }
-  // ================= END FOLLOW-UP DETAIL =================
 
   Widget _detailRow(String label, String value) {
     return Row(
@@ -511,7 +668,6 @@ class _DashboardState extends State<Dashboard> {
       ],
     );
   }
-  // ================= END EMAIL DETAIL =================
 
   // ================= MANUAL REQUEST =================
   Future<void> _submitManual(String company, String email, String jobType) async {
@@ -811,9 +967,7 @@ class _DashboardState extends State<Dashboard> {
   @override
   Widget build(BuildContext context) {
     final opened = count('opened');
-    final delivered = count('delivered');
     final bounced = count('softbounce') + count('hardbounce') + count('bounce');
-    final rate = events.isEmpty ? 0.0 : (opened / events.length * 100);
 
     return Scaffold(
       appBar: AppBar(
@@ -900,7 +1054,10 @@ class _DashboardState extends State<Dashboard> {
               builder: (context, snap) {
                 final data = snap.data?.data() as Map<String, dynamic>?;
                 final sentToday = data?['sent_today'] ?? 0;
-                final lastCompany = (data?['last_company'] ?? 'Waiting').toString();
+                final rawCompany = (data?['last_company'] ?? '').toString().trim();
+                final lastCompany = (rawCompany.isEmpty || rawCompany.startsWith('Waiting '))
+                    ? 'Waiting'
+                    : rawCompany;
                 final lastRun = (data?['last_run'] ?? 'No recent activity').toString();
                 return Container(
                   decoration: BoxDecoration(
@@ -940,10 +1097,12 @@ class _DashboardState extends State<Dashboard> {
               builder: (context, jobSnap) {
                 final jobsCount = jobSnap.data?.docs.length ?? 0;
                 final totalSent = jobsCount > 0 ? jobsCount : events.length;
+                final realDelivered = (totalSent - bounced) < 0 ? 0 : totalSent - bounced;
+                final realRate = realDelivered == 0 ? 0.0 : (opened / realDelivered * 100);
                 return Column(children: [
-                  Row(children: [_metric('Total Sent', '$totalSent', Icons.send_outlined, 'Applications'), const SizedBox(width: 12), _metric('Open Rate', '${rate.toStringAsFixed(1)}%', Icons.visibility_outlined, 'Engagement')]),
+                  Row(children: [_metric('Total Sent', '$totalSent', Icons.send_outlined, 'Applications'), const SizedBox(width: 12), _metric('Open Rate', '${realRate.toStringAsFixed(1)}%', Icons.visibility_outlined, 'Engagement')]),
                   const SizedBox(height: 12),
-                  Row(children: [_metric('Delivered', '$delivered', Icons.check_circle_outline, 'Successful'), const SizedBox(width: 12), _metric('Bounced', '$bounced', Icons.error_outline, 'Failed')]),
+                  Row(children: [_metric('Delivered', '$realDelivered', Icons.check_circle_outline, 'Successful'), const SizedBox(width: 12), _metric('Bounced', '$bounced', Icons.error_outline, 'Failed')]),
                 ]);
               },
             ),
@@ -1021,7 +1180,7 @@ class _DashboardState extends State<Dashboard> {
             ),
             const SizedBox(height: 24),
 
-            // ALL COMPANIES - TAPPABLE
+            // ALL COMPANIES - TAPPABLE + PAGINATED + PHONE/WHATSAPP
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('All Companies', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
               StreamBuilder<QuerySnapshot>(
@@ -1034,7 +1193,7 @@ class _DashboardState extends State<Dashboard> {
               onChanged: (v) => setState(() => searchQuery = v.trim().toLowerCase()),
               style: const TextStyle(color: Colors.white, fontSize: 13),
               decoration: InputDecoration(
-                hintText: 'Search company or email...',
+                hintText: 'Search company, email or phone...',
                 hintStyle: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
                 prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF9CA3AF)),
                 filled: true,
@@ -1047,13 +1206,17 @@ class _DashboardState extends State<Dashboard> {
             ),
             const SizedBox(height: 10),
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('jobs_sent').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('jobs_sent')
+                  .orderBy('timestamp', descending: true)
+                  .limit(_jobsLimit)
+                  .snapshots(),
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFF10B981), strokeWidth: 2)));
                 }
-                var docs = snap.data?.docs ?? [];
-                if (docs.isEmpty) {
+                final rawDocs = snap.data?.docs ?? [];
+                if (rawDocs.isEmpty) {
                   return Card(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
@@ -1061,56 +1224,87 @@ class _DashboardState extends State<Dashboard> {
                     ),
                   );
                 }
-                docs.sort((a, b) {
-                  final ad = (a.data() as Map<String, dynamic>)['timestamp']?.toString() ?? '';
-                  final bd = (b.data() as Map<String, dynamic>)['timestamp']?.toString() ?? '';
-                  return bd.compareTo(ad);
-                });
-                if (searchQuery.isNotEmpty) {
-                  docs = docs.where((d) {
-                    final j = d.data() as Map<String, dynamic>;
-                    final c = (j['company'] ?? '').toString().toLowerCase();
-                    final e = (j['email'] ?? '').toString().toLowerCase();
-                    return c.contains(searchQuery) || e.contains(searchQuery);
-                  }).toList();
-                }
-                if (docs.isEmpty) {
+                final filteredDocs = searchQuery.isEmpty
+                    ? rawDocs
+                    : rawDocs.where((d) {
+                        final j = d.data() as Map<String, dynamic>;
+                        final c = (j['company'] ?? '').toString().toLowerCase();
+                        final e = (j['email'] ?? '').toString().toLowerCase();
+                        final p = _cleanPhone(j['phone']).toLowerCase();
+                        return c.contains(searchQuery) || e.contains(searchQuery) || (p.isNotEmpty && p.contains(searchQuery));
+                      }).toList();
+                if (filteredDocs.isEmpty) {
                   return const Card(child: Padding(padding: EdgeInsets.all(20), child: Center(child: Text('No company found.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
                 }
                 return Column(
-                  children: docs.map((d) {
-                    final j = d.data() as Map<String, dynamic>;
-                    final company = (j['company'] ?? 'Unknown').toString();
-                    final email = (j['email'] ?? '').toString();
-                    final jobType = (j['job_type'] ?? 'FLUTTER').toString();
-                    final shortDate = _formatDate(j['timestamp']);
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
-                      child: ListTile(
-                        onTap: () => _showEmailDetail(j),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                        leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.send_outlined, color: Color(0xFF10B981), size: 16)),
-                        title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Padding(padding: const EdgeInsets.only(top: 2), child: Text('$email • $shortDate', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: Text(jobType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34D399)))),
-                            const SizedBox(width: 6),
-                            const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
-                          ],
+                  children: [
+                    ...filteredDocs.map((d) {
+                      final j = d.data() as Map<String, dynamic>;
+                      final company = (j['company'] ?? 'Unknown').toString();
+                      final email = (j['email'] ?? '').toString();
+                      final phone = _cleanPhone(j['phone']);
+                      final jobType = (j['job_type'] ?? 'FLUTTER').toString();
+                      final shortDate = _formatDate(j['timestamp']);
+                      final subtitleParts = [
+                        if (email.isNotEmpty) email,
+                        if (phone.isNotEmpty) phone,
+                        if (shortDate.isNotEmpty) shortDate,
+                      ].join(' • ');
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+                        child: ListTile(
+                          onTap: () => _showEmailDetail(j),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                          leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.send_outlined, color: Color(0xFF10B981), size: 16)),
+                          title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Padding(padding: const EdgeInsets.only(top: 2), child: Text(subtitleParts, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (phone.isNotEmpty) ...[
+                                GestureDetector(
+                                  onTap: () => _openWhatsApp(phone, company),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(Icons.chat_bubble_outline, size: 16, color: Color(0xFF10B981)),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: Text(jobType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34D399)))),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    if (rawDocs.length >= _jobsLimit)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Center(
+                          child: TextButton(
+                            onPressed: () => setState(() => _jobsLimit += 20),
+                            child: const Text(
+                              'Load More (20 more)',
+                              style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w600, fontSize: 12),
+                            ),
+                          ),
                         ),
                       ),
-                    );
-                  }).toList(),
+                  ],
                 );
               },
             ),
 
             const SizedBox(height: 24),
 
-            // ================= FOLLOW-UPS - V40 - NEW =================
+            // ================= FOLLOW-UPS - V40 - PAGINATED =================
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('Follow-ups', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
               StreamBuilder<QuerySnapshot>(
@@ -1120,13 +1314,16 @@ class _DashboardState extends State<Dashboard> {
             ]),
             const SizedBox(height: 10),
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('jobs_followups').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('jobs_followups')
+                  .limit(_followupsLimit)
+                  .snapshots(),
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFF3B82F6), strokeWidth: 2)));
                 }
-                var docs = snap.data?.docs ?? [];
-                if (docs.isEmpty) {
+                final rawDocs = snap.data?.docs ?? [];
+                if (rawDocs.isEmpty) {
                   return Card(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
@@ -1134,50 +1331,71 @@ class _DashboardState extends State<Dashboard> {
                     ),
                   );
                 }
+                var docs = List<QueryDocumentSnapshot>.from(rawDocs);
                 docs.sort((a, b) {
                   final ad = (a.data() as Map<String, dynamic>)['timestamp']?.toString() ?? '';
                   final bd = (b.data() as Map<String, dynamic>)['timestamp']?.toString() ?? '';
                   return bd.compareTo(ad);
                 });
-                // Apply same search filter as All Companies
                 if (searchQuery.isNotEmpty) {
                   docs = docs.where((d) {
                     final j = d.data() as Map<String, dynamic>;
                     final c = (j['company'] ?? '').toString().toLowerCase();
                     final e = (j['email'] ?? '').toString().toLowerCase();
-                    return c.contains(searchQuery) || e.contains(searchQuery);
+                    final p = _cleanPhone(j['phone']).toLowerCase();
+                    return c.contains(searchQuery) || e.contains(searchQuery) || (p.isNotEmpty && p.contains(searchQuery));
                   }).toList();
                 }
                 if (docs.isEmpty) {
                   return const Card(child: Padding(padding: EdgeInsets.all(20), child: Center(child: Text('No follow-up found.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
                 }
                 return Column(
-                  children: docs.map((d) {
-                    final j = d.data() as Map<String, dynamic>;
-                    final company = (j['company'] ?? 'Unknown').toString();
-                    final email = (j['email'] ?? '').toString();
-                    final jobType = (j['job_type'] ?? 'FLUTTER').toString();
-                    final shortDate = _formatDate(j['timestamp']);
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
-                      child: ListTile(
-                        onTap: () => _showFollowupDetail(j),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                        leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.reply_outlined, color: Color(0xFF3B82F6), size: 16)),
-                        title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Padding(padding: const EdgeInsets.only(top: 2), child: Text('$email • $shortDate', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: Text('FOLLOW-UP', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF60A5FA)))),
-                            const SizedBox(width: 6),
-                            const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
-                          ],
+                  children: [
+                    ...docs.map((d) {
+                      final j = d.data() as Map<String, dynamic>;
+                      final company = (j['company'] ?? 'Unknown').toString();
+                      final email = (j['email'] ?? '').toString();
+                      final phone = _cleanPhone(j['phone']);
+                      final shortDate = _formatDate(j['timestamp']);
+                      final subtitleParts = [
+                        if (email.isNotEmpty) email,
+                        if (phone.isNotEmpty) phone,
+                        if (shortDate.isNotEmpty) shortDate,
+                      ].join(' • ');
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+                        child: ListTile(
+                          onTap: () => _showFollowupDetail(j),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                          leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.reply_outlined, color: Color(0xFF3B82F6), size: 16)),
+                          title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Padding(padding: const EdgeInsets.only(top: 2), child: Text(subtitleParts, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: const Text('FOLLOW-UP', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF60A5FA)))),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    if (rawDocs.length >= _followupsLimit)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Center(
+                          child: TextButton(
+                            onPressed: () => setState(() => _followupsLimit += 20),
+                            child: const Text(
+                              'Load More (20 more)',
+                              style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w600, fontSize: 12),
+                            ),
+                          ),
                         ),
                       ),
-                    );
-                  }).toList(),
+                  ],
                 );
               },
             ),
