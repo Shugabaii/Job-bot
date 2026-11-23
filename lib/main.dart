@@ -299,8 +299,8 @@ class _DashboardState extends State<Dashboard> {
     return "Flutter + AI Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
-  // FIXED: was Future> - now Future<Map<String, dynamic>>
-  Future<Map<String, dynamic>> _fetchMergedDetail(Map<String, dynamic> j) async {
+  // FIXED: was Future> - now Future>
+  Future> _fetchMergedDetail(Map<String, dynamic> j) async {
     final merged = Map<String, dynamic>.from(j);
     final hasBody = (merged['email_body'] ?? merged['body'] ?? '').toString().trim().isNotEmpty;
     final hasPhone = _cleanPhone(merged['phone']).isNotEmpty;
@@ -427,8 +427,8 @@ class _DashboardState extends State<Dashboard> {
       isScrollControlled: true,
       backgroundColor: const Color(0xFF111827),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      // FIXED: was FutureBuilder>( - now FutureBuilder<Map<String, dynamic>>
-      builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
+      // FIXED: was FutureBuilder>( - now FutureBuilder>
+      builder: (ctx) => FutureBuilder>(
         future: _fetchMergedDetail(j),
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -966,6 +966,314 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
+  // ================= REPLIES - NEW ONLY =================
+  Widget _repliesMetrics(int totalSent) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('jobs_replies')
+          .snapshots(),
+      builder: (context, snap) {
+        final repliesCount = snap.data?.docs.length ?? 0;
+        final rate = totalSent == 0
+            ? '0.0%'
+            : '${(repliesCount / totalSent * 100).toStringAsFixed(1)}%';
+        return Column(
+          children: [
+            Row(
+              children: [
+                _metric(
+                  'Replies',
+                  '$repliesCount',
+                  Icons.reply_outlined,
+                  'Companies replied',
+                ),
+                const SizedBox(width: 12),
+                _metric(
+                  'Reply Rate',
+                  rate,
+                  Icons.mark_email_read_outlined,
+                  'Response rate',
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showReplyDetail(Map<String, dynamic> r) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111827),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (ctx2, scrollCtrl) => SingleChildScrollView(
+          controller: scrollCtrl,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F2937),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                (r['company'] ?? 'Unknown').toString(),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                (r['email'] ?? '').toString(),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF9CA3AF),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                (r['subject'] ?? '').toString(),
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF090D16),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF1F2937)),
+                ),
+                child: SelectableText(
+                  (r['reply_text'] ?? r['snippet'] ?? '').toString(),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.white,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () async {
+                    final email = (r['email'] ?? '').toString();
+                    if (email.isNotEmpty) {
+                      final uri = Uri.parse(
+                        'mailto:$email?subject=Re: ${(r['subject'] ?? '').toString()}',
+                      );
+                      try {
+                        await launchUrl(uri);
+                      } catch (_) {}
+                    }
+                  },
+                  icon: const Icon(Icons.reply, color: Colors.white, size: 16),
+                  label: const Text(
+                    'Reply in Gmail',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _repliesList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('jobs_replies')
+          .orderBy('timestamp', descending: true)
+          .limit(20)
+          .snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData) return const SizedBox.shrink();
+        final docs = snap.data!.docs;
+        if (docs.isEmpty) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF1F2937),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.reply_outlined,
+                        size: 22,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'No replies yet',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'When a company replies in Gmail, it will appear here automatically.',
+                      style: TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: 11,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Replies',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F2937),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${docs.length} total • Tap to view reply',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF9CA3AF),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...docs.map((d) {
+              final r = d.data() as Map<String, dynamic>;
+              final company = (r['company'] ?? 'Unknown').toString();
+              final email = (r['email'] ?? '').toString();
+              final subject = (r['subject'] ?? '').toString();
+              final snippet =
+                  (r['reply_text'] ?? r['snippet'] ?? '').toString();
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF111827),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
+                  ),
+                ),
+                child: ListTile(
+                  onTap: () => _showReplyDetail(r),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 2,
+                  ),
+                  leading: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.reply_outlined,
+                      color: Color(0xFFF59E0B),
+                      size: 16,
+                    ),
+                  ),
+                  title: Text(
+                    company,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: Colors.white,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      subject.isNotEmpty ? '$subject • $email' : email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    size: 16,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final opened = count('opened');
@@ -1103,6 +1411,8 @@ class _DashboardState extends State<Dashboard> {
                   Row(children: [_metric('Total Sent', '$totalSent', Icons.send_outlined, 'Applications'), const SizedBox(width: 12), _metric('Open Rate', '${realRate.toStringAsFixed(1)}%', Icons.visibility_outlined, 'Engagement')]),
                   const SizedBox(height: 12),
                   Row(children: [_metric('Delivered', '$realDelivered', Icons.check_circle_outline, 'Successful'), const SizedBox(width: 12), _metric('Bounced', '$bounced', Icons.error_outline, 'Failed')]),
+                  const SizedBox(height: 12),
+                  _repliesMetrics(totalSent),
                 ]);
               },
             ),
@@ -1391,6 +1701,8 @@ class _DashboardState extends State<Dashboard> {
                 );
               },
             ),
+            const SizedBox(height: 24),
+            _repliesList(),
             const SizedBox(height: 24),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('Email Activity', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
