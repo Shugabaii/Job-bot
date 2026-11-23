@@ -542,7 +542,7 @@ class _DashboardState extends State<Dashboard> {
     final saved = (j['email_body'] ?? j['body'] ?? j['message'] ?? '').toString().trim();
     if (saved.isNotEmpty) return saved;
     final company = (j['company'] ?? 'your team').toString();
-    return "Hello $company,\n\nFollowing up on my email from a few days ago.\n\nI shared a quick idea to build a small Flutter demo showing your core product working on mobile in 1 week.\n\nIf it would be helpful, I can send the demo for your review. Just let me know.\n\nThank you for your time,\n\nHabibu Armayau Isah\nSoftware Developer (Flutter, Web, Backend & AI) | Kano, Nigeria\nPhone / WhatsApp: +234 806 539 5103";
+    return "Hello $company,\n\nFollowing up on my email from a few days ago.\n\nI shared a quick idea to build a small Flutter demo showing your core product working on mobile in 1 week.\n\nIf it would be helpful, I can send the demo for your review. Just let me know.\n\nThank you for your time,\n\nHabibu Armayau Isah\nSoftware Developer (Flutter, Web, Backend & AI) | Kano, Nigeria\nPhone / WhatsApp: +234 806 539 5103"; //
   }
 
   String _buildFollowupSubject(Map<String, dynamic> j) {
