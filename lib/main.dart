@@ -299,7 +299,8 @@ class _DashboardState extends State<Dashboard> {
     return "Flutter + AI Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
-  Future> _fetchMergedDetail(Map<String, dynamic> j) async {
+  // FIXED: was Future> - now Future<Map<String, dynamic>>
+  Future<Map<String, dynamic>> _fetchMergedDetail(Map<String, dynamic> j) async {
     final merged = Map<String, dynamic>.from(j);
     final hasBody = (merged['email_body'] ?? merged['body'] ?? '').toString().trim().isNotEmpty;
     final hasPhone = _cleanPhone(merged['phone']).isNotEmpty;
@@ -426,7 +427,8 @@ class _DashboardState extends State<Dashboard> {
       isScrollControlled: true,
       backgroundColor: const Color(0xFF111827),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => FutureBuilder>(
+      // FIXED: was FutureBuilder>( - now FutureBuilder<Map<String, dynamic>>
+      builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
         future: _fetchMergedDetail(j),
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -542,7 +544,7 @@ class _DashboardState extends State<Dashboard> {
     final saved = (j['email_body'] ?? j['body'] ?? j['message'] ?? '').toString().trim();
     if (saved.isNotEmpty) return saved;
     final company = (j['company'] ?? 'your team').toString();
-    return "Hello $company,\n\nFollowing up on my email from a few days ago.\n\nI shared a quick idea to build a small Flutter demo showing your core product working on mobile in 1 week.\n\nIf it would be helpful, I can send the demo for your review. Just let me know.\n\nThank you for your time,\n\nHabibu Armayau Isah\nSoftware Developer (Flutter, Web, Backend & AI) | Kano, Nigeria\nPhone / WhatsApp: +234 806 539 5103"; //
+    return "Hello $company,\n\nFollowing up on my email from a few days ago.\n\nI shared a quick idea to build a small Flutter demo showing your core product working on mobile in 1 week.\n\nIf it would be helpful, I can send the demo for your review. Just let me know.\n\nThank you for your time,\n\nHabibu Armayau Isah\nSoftware Developer (Flutter, Web, Backend & AI) | Kano, Nigeria\nPhone / WhatsApp: +234 806 539 5103";
   }
 
   String _buildFollowupSubject(Map<String, dynamic> j) {
@@ -996,7 +998,7 @@ class _DashboardState extends State<Dashboard> {
           const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('CareerPilot AI', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
             SizedBox(height: 1),
-            Text('Habeeb Armaya\'u — Software Engineer', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.normal)),
+            Text("Habeeb Armaya'u — Software Engineer", style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.normal)),
           ]),
         ]),
         actions: [
@@ -1048,7 +1050,6 @@ class _DashboardState extends State<Dashboard> {
               ),
             ]),
             const SizedBox(height: 20),
-
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance.collection('bot_status').doc('current').snapshots(),
               builder: (context, snap) {
@@ -1091,7 +1092,6 @@ class _DashboardState extends State<Dashboard> {
               },
             ),
             const SizedBox(height: 16),
-
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('jobs_sent').snapshots(),
               builder: (context, jobSnap) {
@@ -1107,7 +1107,6 @@ class _DashboardState extends State<Dashboard> {
               },
             ),
             const SizedBox(height: 16),
-
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('jobs_sent').snapshots(),
               builder: (context, snap) {
@@ -1116,7 +1115,6 @@ class _DashboardState extends State<Dashboard> {
               },
             ),
             const SizedBox(height: 24),
-
             const Text('Services', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
             const SizedBox(height: 10),
             Card(
@@ -1132,7 +1130,6 @@ class _DashboardState extends State<Dashboard> {
               ),
             ),
             const SizedBox(height: 24),
-
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('Manual Requests', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
               StreamBuilder<QuerySnapshot>(
@@ -1179,8 +1176,6 @@ class _DashboardState extends State<Dashboard> {
               },
             ),
             const SizedBox(height: 24),
-
-            // ALL COMPANIES - TAPPABLE + PAGINATED + PHONE/WHATSAPP
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('All Companies', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
               StreamBuilder<QuerySnapshot>(
@@ -1301,10 +1296,7 @@ class _DashboardState extends State<Dashboard> {
                 );
               },
             ),
-
             const SizedBox(height: 24),
-
-            // ================= FOLLOW-UPS - V40 - PAGINATED =================
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('Follow-ups', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
               StreamBuilder<QuerySnapshot>(
@@ -1399,10 +1391,7 @@ class _DashboardState extends State<Dashboard> {
                 );
               },
             ),
-            // ================= END FOLLOW-UPS =================
-
             const SizedBox(height: 24),
-
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('Email Activity', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
               Text('${filteredBrevo.length} events', style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
@@ -1450,7 +1439,6 @@ class _DashboardState extends State<Dashboard> {
                   ),
                 );
               }),
-
             const SizedBox(height: 32),
             const Center(child: Text('CareerPilot AI', style: TextStyle(fontSize: 11, color: Color(0xFF6B7280), letterSpacing: 0.2))),
           ]),
