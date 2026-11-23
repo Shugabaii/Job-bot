@@ -299,7 +299,6 @@ class _DashboardState extends State<Dashboard> {
     return "Flutter + AI Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
-  // FIXED: was Future> - now Future>
   Future> _fetchMergedDetail(Map<String, dynamic> j) async {
     final merged = Map<String, dynamic>.from(j);
     final hasBody = (merged['email_body'] ?? merged['body'] ?? '').toString().trim().isNotEmpty;
@@ -427,7 +426,6 @@ class _DashboardState extends State<Dashboard> {
       isScrollControlled: true,
       backgroundColor: const Color(0xFF111827),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      // FIXED: was FutureBuilder>( - now FutureBuilder>
       builder: (ctx) => FutureBuilder>(
         future: _fetchMergedDetail(j),
         builder: (ctx, snap) {
