@@ -1,8 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
 
@@ -70,6 +71,7 @@ class _DashboardState extends State<Dashboard> {
   String _activeClientId = 'user';
   List<Map<String, dynamic>> _clientsCache = [];
   static const String _hfSpaceUrl = 'https://iharmayau-habeeb-job-bot.hf.space/';
+  String _uploadingCvFor = '';
 
   @override
   void initState() {
@@ -186,7 +188,48 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 
-  // V61 - Full delete: client + gmail token + clear active
+  // ================= V62 CV UPLOAD FROM APP =================
+  Future<void> _uploadCvForClient(String clientId, String name) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not read PDF. Try again.'), backgroundColor: Colors.red));
+        return;
+      }
+      final sizeMb = bytes.length / (1024 * 1024);
+      if (sizeMb > 5) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF too big: ${sizeMb.toStringAsFixed(1)}MB. Compress to under 5MB.'), backgroundColor: Colors.red));
+        return;
+      }
+      if (mounted) setState(() => _uploadingCvFor = clientId);
+      final ref = FirebaseStorage.instance.ref().child('cvs/$clientId.pdf');
+      await ref.putData(bytes, SettableMetadata(contentType: 'application/pdf'));
+      final downloadUrl = await ref.getDownloadURL();
+      await FirebaseFirestore.instance.collection('clients').doc(clientId).set({
+        'cv_url': downloadUrl,
+        'cvUrl': downloadUrl,
+        'cv_uploaded_at': DateTime.now().toIso8601String(),
+        'cv_file_name': file.name,
+      }, SetOptions(merge: true));
+      if (mounted) {
+        setState(() => _uploadingCvFor = '');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('CV uploaded for $name! Bot will now attach THIS CV.'), backgroundColor: const Color(0xFF10B981), duration: const Duration(seconds: 3)));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _uploadingCvFor = '');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('CV upload failed: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
   Future<void> _deleteClient(String clientId, String name) async {
     if (clientId == 'user') return;
     final confirmCtrl = TextEditingController();
@@ -210,6 +253,7 @@ class _DashboardState extends State<Dashboard> {
     try {
       await FirebaseFirestore.instance.collection('clients').doc(clientId).delete();
       try { await FirebaseFirestore.instance.collection('gmail_connected').doc(clientId).delete(); } catch (_) {}
+      try { await FirebaseStorage.instance.ref().child('cvs/$clientId.pdf').delete(); } catch (_) {}
       if (_activeClientId == clientId) {
         try { await FirebaseFirestore.instance.collection('bot_config').doc('active').delete(); } catch (_) {}
         if (mounted) setState(() => _activeClientId = 'user');
@@ -321,7 +365,7 @@ class _DashboardState extends State<Dashboard> {
             const SizedBox(height: 10),
             _clientTextField(locCtrl, 'Location * e.g. Abuja, Kano'),
             const SizedBox(height: 10),
-            _clientTextField(cvCtrl, 'CV Link (Google Drive / PDF URL)'),
+            _clientTextField(cvCtrl, 'CV Link (Google Drive / PDF URL) - or upload CV after saving'),
             const SizedBox(height: 10),
             _clientTextField(skillCtrl, 'Skill / Qualification e.g. BSc Nursing, RN'),
           ],
@@ -358,7 +402,7 @@ class _DashboardState extends State<Dashboard> {
                   'max_per_day': 10,
                   'created_at': DateTime.now().toIso8601String(),
                 }, SetOptions(merge: true));
-                if (context.mounted) { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Client $name added (id: $id). Now tap Copy Connect Link to send Gmail link.'), backgroundColor: const Color(0xFF10B981))); }
+                if (context.mounted) { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Client $name added (id: $id). Now upload CV + tap Copy Connect Link.'), backgroundColor: const Color(0xFF10B981))); }
               } catch (e) {
                 if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: Colors.red));
               }
@@ -421,6 +465,7 @@ class _DashboardState extends State<Dashboard> {
             final isActive = id == _activeClientId;
             final maxPerDay = c['max_per_day'] ?? 10;
             final hasCv = (c['cv_url'] ?? c['cvUrl'] ?? '').toString().isNotEmpty;
+            final isUploading = _uploadingCvFor == id;
             final link = '$_hfSpaceUrl?client=$id';
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -460,6 +505,13 @@ class _DashboardState extends State<Dashboard> {
                   const SizedBox(width: 8),
                   Expanded(child: OutlinedButton(onPressed: () => _showLimitDialog(id, name, maxPerDay), style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF1F2937)), padding: const EdgeInsets.symmetric(vertical: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))), child: const Text('🔢 Set Limit', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)))),
                 ]),
+                const SizedBox(height: 8),
+                SizedBox(width: double.infinity, child: ElevatedButton.icon(
+                  onPressed: isUploading ? null : () => _uploadCvForClient(id, name),
+                  style: ElevatedButton.styleFrom(backgroundColor: hasCv ? const Color(0xFF1F2937) : const Color(0xFFF59E0B), padding: const EdgeInsets.symmetric(vertical: 9), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                  icon: isUploading ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.upload_file, size: 16, color: Colors.white),
+                  label: Text(isUploading ? 'Uploading CV...' : (hasCv ? '📄 Replace CV (PDF)' : '📄 Upload CV (PDF)'), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                )),
               ])),
             );
           }),
@@ -468,35 +520,6 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  int count(String type) => events.where((e) => (e['event'] ?? '').toString().toLowerCase() == type).length;
-  Color colorFor(String event) {
-    switch (event.toLowerCase()) {
-      case 'opened': return const Color(0xFF10B981);
-      case 'clicked': return const Color(0xFF3B82F6);
-      case 'delivered': return const Color(0xFFA78BFA);
-      case 'bounce': case 'softbounce': case 'hardbounce': return const Color(0xFFEF4444);
-      default: return const Color(0xFF9CA3AF);
-    }
-  }
-  IconData iconFor(String event) {
-    switch (event.toLowerCase()) {
-      case 'opened': return Icons.visibility_outlined;
-      case 'clicked': return Icons.ads_click_outlined;
-      case 'delivered': return Icons.check_circle_outline;
-      case 'bounce': case 'softbounce': case 'hardbounce': return Icons.error_outline;
-      default: return Icons.mail_outline;
-    }
-  }
-  String labelFor(String event) {
-    switch (event.toLowerCase()) {
-      case 'opened': return 'Opened';
-      case 'clicked': return 'Clicked';
-      case 'delivered': return 'Delivered';
-      case 'request': case 'requests': return 'Sent';
-      case 'bounce': case 'softbounce': case 'hardbounce': return 'Bounced';
-      default: return 'Sent';
-    }
-  }
   String _formatDate(dynamic ts) {
     if (ts == null) return '';
     if (ts is Timestamp) { final d = ts.toDate(); return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}'; }
