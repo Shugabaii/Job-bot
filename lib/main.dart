@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
 
@@ -71,7 +69,6 @@ class _DashboardState extends State<Dashboard> {
   String _activeClientId = 'user';
   List<Map<String, dynamic>> _clientsCache = [];
   static const String _hfSpaceUrl = 'https://iharmayau-habeeb-job-bot.hf.space/';
-  String _uploadingCvFor = '';
 
   @override
   void initState() {
@@ -188,46 +185,64 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 
-  // ================= V62 CV UPLOAD FROM APP =================
-  Future<void> _uploadCvForClient(String clientId, String name) async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final file = result.files.first;
-      final bytes = file.bytes;
-      if (bytes == null) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not read PDF. Try again.'), backgroundColor: Colors.red));
-        return;
-      }
-      final sizeMb = bytes.length / (1024 * 1024);
-      if (sizeMb > 5) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF too big: ${sizeMb.toStringAsFixed(1)}MB. Compress to under 5MB.'), backgroundColor: Colors.red));
-        return;
-      }
-      if (mounted) setState(() => _uploadingCvFor = clientId);
-      final ref = FirebaseStorage.instance.ref().child('cvs/$clientId.pdf');
-      await ref.putData(bytes, SettableMetadata(contentType: 'application/pdf'));
-      final downloadUrl = await ref.getDownloadURL();
-      await FirebaseFirestore.instance.collection('clients').doc(clientId).set({
-        'cv_url': downloadUrl,
-        'cvUrl': downloadUrl,
-        'cv_uploaded_at': DateTime.now().toIso8601String(),
-        'cv_file_name': file.name,
-      }, SetOptions(merge: true));
-      if (mounted) {
-        setState(() => _uploadingCvFor = '');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('CV uploaded for $name! Bot will now attach THIS CV.'), backgroundColor: const Color(0xFF10B981), duration: const Duration(seconds: 3)));
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _uploadingCvFor = '');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('CV upload failed: $e'), backgroundColor: Colors.red));
-      }
-    }
+  // ================= V63 CV - DRIVE LINK ONLY - NO STORAGE, NO PAY =================
+  Future<void> _pasteCvForClient(String clientId, String name, String currentLink) async {
+    final ctrl = TextEditingController(text: currentLink);
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF111827),
+        title: Text('CV Link for $name', style: const TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('1. Upload CV to Google Drive\n2. Share -> Anyone with link\n3. Copy link & paste here', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'https://drive.google.com/...',
+                hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+                filled: true,
+                fillColor: const Color(0xFF090D16),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          if (currentLink.isNotEmpty)
+            TextButton(
+              onPressed: () async {
+                await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'cv_url': '', 'cvUrl': '', 'cvLink': ''}, SetOptions(merge: true));
+                if (mounted) Navigator.pop(ctx);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CV Link removed')));
+              },
+              child: const Text('Remove', style: TextStyle(color: Colors.red)),
+            ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+            onPressed: () async {
+              final link = ctrl.text.trim();
+              if (link.isEmpty) return;
+              await FirebaseFirestore.instance.collection('clients').doc(clientId).set({
+                'cv_url': link,
+                'cvUrl': link,
+                'cvLink': link,
+                'cv_uploaded_at': DateTime.now().toIso8601String(),
+              }, SetOptions(merge: true));
+              if (mounted) Navigator.pop(ctx);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('CV Link saved for $name! Bot will now attach THIS CV.'), backgroundColor: const Color(0xFF10B981)));
+            },
+            child: const Text('Save Link', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _deleteClient(String clientId, String name) async {
@@ -253,7 +268,7 @@ class _DashboardState extends State<Dashboard> {
     try {
       await FirebaseFirestore.instance.collection('clients').doc(clientId).delete();
       try { await FirebaseFirestore.instance.collection('gmail_connected').doc(clientId).delete(); } catch (_) {}
-      try { await FirebaseStorage.instance.ref().child('cvs/$clientId.pdf').delete(); } catch (_) {}
+      // No Storage delete - Drive link only now
       if (_activeClientId == clientId) {
         try { await FirebaseFirestore.instance.collection('bot_config').doc('active').delete(); } catch (_) {}
         if (mounted) setState(() => _activeClientId = 'user');
@@ -365,7 +380,7 @@ class _DashboardState extends State<Dashboard> {
             const SizedBox(height: 10),
             _clientTextField(locCtrl, 'Location * e.g. Abuja, Kano'),
             const SizedBox(height: 10),
-            _clientTextField(cvCtrl, 'CV Link (Google Drive / PDF URL) - or upload CV after saving'),
+            _clientTextField(cvCtrl, 'CV Link (Google Drive / PDF URL) - or paste after saving'),
             const SizedBox(height: 10),
             _clientTextField(skillCtrl, 'Skill / Qualification e.g. BSc Nursing, RN'),
           ],
@@ -396,13 +411,14 @@ class _DashboardState extends State<Dashboard> {
                   'phone': phoneCtrl.text.trim(),
                   'cv_url': cvCtrl.text.trim(),
                   'cvUrl': cvCtrl.text.trim(),
+                  'cvLink': cvCtrl.text.trim(),
                   'gmail_connected': false,
                   'is_paused': false,
                   'status': 'active',
                   'max_per_day': 10,
                   'created_at': DateTime.now().toIso8601String(),
                 }, SetOptions(merge: true));
-                if (context.mounted) { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Client $name added (id: $id). Now upload CV + tap Copy Connect Link.'), backgroundColor: const Color(0xFF10B981))); }
+                if (context.mounted) { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Client $name added (id: $id). Now paste CV Link + tap Copy Connect Link.'), backgroundColor: const Color(0xFF10B981))); }
               } catch (e) {
                 if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: Colors.red));
               }
@@ -464,8 +480,8 @@ class _DashboardState extends State<Dashboard> {
             final isPaused = c['is_paused'] == true || (c['status'] ?? '').toString().toLowerCase() == 'paused';
             final isActive = id == _activeClientId;
             final maxPerDay = c['max_per_day'] ?? 10;
-            final hasCv = (c['cv_url'] ?? c['cvUrl'] ?? '').toString().isNotEmpty;
-            final isUploading = _uploadingCvFor == id;
+            final cvLink = (c['cv_url'] ?? c['cvUrl'] ?? c['cvLink'] ?? '').toString();
+            final hasCv = cvLink.isNotEmpty;
             final link = '$_hfSpaceUrl?client=$id';
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -507,10 +523,10 @@ class _DashboardState extends State<Dashboard> {
                 ]),
                 const SizedBox(height: 8),
                 SizedBox(width: double.infinity, child: ElevatedButton.icon(
-                  onPressed: isUploading ? null : () => _uploadCvForClient(id, name),
+                  onPressed: () => _pasteCvForClient(id, name, cvLink),
                   style: ElevatedButton.styleFrom(backgroundColor: hasCv ? const Color(0xFF1F2937) : const Color(0xFFF59E0B), padding: const EdgeInsets.symmetric(vertical: 9), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                  icon: isUploading ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.upload_file, size: 16, color: Colors.white),
-                  label: Text(isUploading ? 'Uploading CV...' : (hasCv ? '📄 Replace CV (PDF)' : '📄 Upload CV (PDF)'), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                  icon: const Icon(Icons.link, size: 16, color: Colors.white),
+                  label: Text(hasCv ? '🔗 CV Linked - Tap to Change' : '🔗 Paste CV Link (Drive)', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
                 )),
               ])),
             );
@@ -775,7 +791,7 @@ class _DashboardState extends State<Dashboard> {
       ),
       floatingActionButton: FloatingActionButton.extended(onPressed: _showAddManualDialog, backgroundColor: const Color(0xFF10B981), icon: const Icon(Icons.add, color: Colors.white), label: const Text('Send Manual', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
       body: RefreshIndicator(onRefresh: () async { setState(() {}); }, color: const Color(0xFF10B981), backgroundColor: const Color(0xFF111827), child: SingleChildScrollView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Overview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.3)), SizedBox(height: 2), Text('Your applications and email activity', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)))]), IconButton(onPressed: () => setState(() {}), icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF9CA3AF)), style: IconButton.styleFrom(backgroundColor: const Color(0xFF111827), side: const BorderSide(color: Color(0xFF1F2937)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))))]),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Overview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.3)), SizedBox(height: 2), Text('Your applications and email activity', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)))]), Row(children: [IconButton(onPressed: _showBotSettingsDialog, icon: const Icon(Icons.settings, size: 18, color: Color(0xFF9CA3AF)), style: IconButton.styleFrom(backgroundColor: const Color(0xFF111827), side: const BorderSide(color: Color(0xFF1F2937)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))), const SizedBox(width: 8), IconButton(onPressed: () => setState(() {}), icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF9CA3AF)), style: IconButton.styleFrom(backgroundColor: const Color(0xFF111827), side: const BorderSide(color: Color(0xFF1F2937)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))))])]),
         const SizedBox(height: 20),
         StreamBuilder<DocumentSnapshot>(stream: FirebaseFirestore.instance.collection('bot_status').doc('current').snapshots(), builder: (context, snap) {
           final data = snap.data?.data() as Map<String, dynamic>?; final sentToday = data?['sent_today'] ?? 0;
@@ -783,74 +799,162 @@ class _DashboardState extends State<Dashboard> {
           return Container(decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1F2937))), child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.bolt, size: 16, color: Color(0xFF10B981))), const SizedBox(width: 10), const Text('Bot Status', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)), const Spacer(), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: const Text('LIVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF34D399))))]),
             const SizedBox(height: 18),
-            Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$sentToday', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)), const SizedBox(height: 2), const Text('Sent Today', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))] )), Container(width: 1, height: 35, color: const Color(0xFF1F2937)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(lastCompany.length > 18 ? '${lastCompany.substring(0, 18)}...' : lastCompany, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 2), const Text('Last Company', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))]))]),
-            const SizedBox(height: 14),
-            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: const Color(0xFF090D16), borderRadius: BorderRadius.circular(8)), child: Row(children: [const Icon(Icons.access_time, size: 12, color: Color(0xFF6B7280)), const SizedBox(width: 6), Expanded(child: Text('Last activity: $lastRun', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))))])),
+            Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$sentToday', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)), const SizedBox(height: 2), const Text('Sent Today', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))]))]),
+            const SizedBox(height: 12),
+            Text('Last: $lastCompany', style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+            Text(lastRun, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+            const SizedBox(height: 12),
+            _systemRow('Bot', 'Online'),
+            const SizedBox(height: 8),
+            _systemRow('Gmail', 'Connected'),
+            const SizedBox(height: 8),
+            _systemRow('Active Client', _activeClientId),
           ])));
         }),
         const SizedBox(height: 16),
-        Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))), child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: _selectedClientFilter, isExpanded: true, dropdownColor: const Color(0xFF111827), style: const TextStyle(color: Colors.white, fontSize: 13), items: ['All', ..._clientsCache.map((c) => (c['id'] ?? '').toString())].map((v) => DropdownMenuItem(value: v, child: Text(v == 'All' ? 'Filter: All Clients' : 'Filter: $v', style: const TextStyle(color: Colors.white)))).toList(), onChanged: (v) => setState(() => _selectedClientFilter = v ?? 'All')))),
-        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(100).snapshots(),
+          builder: (context, snap) {
+            final allDocs = snap.data?.docs ?? [];
+            final filtered = allDocs.where((d) { final m = d.data() as Map<String, dynamic>; return _matchesClientFilter(m); }).toList();
+            final totalSent = filtered.length;
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _buildGraph(filtered),
+              const SizedBox(height: 12),
+              Row(children: [_metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'), const SizedBox(width: 12), _metric('Today', '${filtered.where((d) { final m = d.data() as Map<String, dynamic>; final dt = _parseDate(m['timestamp']); return dt != null && _dayKey(dt) == _dayKey(DateTime.now()); }).length}', Icons.today_outlined, 'Sent today')]),
+              const SizedBox(height: 12),
+              _repliesMetrics(totalSent),
+            ]);
+          },
+        ),
+        const SizedBox(height: 24),
         _clientsSection(),
-        const SizedBox(height: 16),
-        StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('jobs_sent').snapshots(), builder: (context, jobSnap) {
-          final allDocs = jobSnap.data?.docs ?? []; final docs = allDocs.where((d) => _matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
-          final jobsCount = docs.length; final totalSent = jobsCount; final realDelivered = totalSent; final realRate = 100.0;
-          return Column(children: [Row(children: [_metric('Total Sent', '$totalSent', Icons.send_outlined, 'Applications'), const SizedBox(width: 12), _metric('Open Rate', '${realRate.toStringAsFixed(1)}%', Icons.visibility_outlined, 'Engagement')]), const SizedBox(height: 12), Row(children: [_metric('Delivered', '$realDelivered', Icons.check_circle_outline, 'Successful'), const SizedBox(width: 12), _metric('Active Client', _activeClientId == 'user' ? 'Habibu' : _activeClientId, Icons.person_outline, 'Bot sends for this client')]), const SizedBox(height: 12), _repliesMetrics(totalSent)]);
-        }),
-        const SizedBox(height: 16),
-        StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('jobs_sent').snapshots(), builder: (context, snap) => _buildGraph((snap.data?.docs ?? []).where((d) => _matchesClientFilter(d.data() as Map<String, dynamic>)).toList())),
         const SizedBox(height: 24),
-        const Text('Services', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
-        const SizedBox(height: 10),
-        Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-          _systemRow('Email Delivery (Gmail OAuth - Per Client)', 'Configured'),
-          const Divider(height: 24, color: Color(0xFF1F2937)),
-          Row(children: [const Expanded(child: Text('Bot Settings (Max / Cycles / Sleep / Wait)', style: TextStyle(fontSize: 13, color: Colors.white))), TextButton(onPressed: _showBotSettingsDialog, child: const Text('Edit', style: TextStyle(color: Color(0xFF10B981))))]),
-          const Divider(height: 24, color: Color(0xFF1F2937)),
-          _systemRow('Application Bot (Tavily Only)', 'Running on schedule'),
-          const Divider(height: 24, color: Color(0xFF1F2937)),
-          _systemRow('Database (Firebase)', 'Connected'),
-        ]))),
-        const SizedBox(height: 24),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Manual Requests', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)), StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('pending_jobs').snapshots(), builder: (context, s) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(6)), child: Text('${s.data?.docs.length ?? 0} total', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))))]),
-        const SizedBox(height: 10),
-        StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(), builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) return const SizedBox.shrink();
-          if (snap.hasError) return const Card(child: Padding(padding: EdgeInsets.all(20), child: Text('Could not load manual requests.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12))));
-          final docs = snap.data?.docs ?? [];
-          if (docs.isEmpty) return Card(child: Padding(padding: const EdgeInsets.all(20), child: Center(child: Column(children: [Container(padding: const EdgeInsets.all(10), decoration: const BoxDecoration(color: Color(0xFF1F2937), shape: BoxShape.circle), child: const Icon(Icons.add_circle_outline, size: 22, color: Color(0xFF9CA3AF))), const SizedBox(height: 10), const Text('No manual requests yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)), const SizedBox(height: 4), const Text('Use Send Manual to add a company you choose.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11), textAlign: TextAlign.center)]))));
-          return Column(children: docs.map((d) { final j = d.data() as Map<String, dynamic>; final company = (j['company'] ?? 'Unknown').toString(); final email = (j['email'] ?? '').toString(); final status = (j['status'] ?? 'pending').toString(); final jobType = (j['job_type'] ?? 'FLUTTER').toString(); final c = _manualStatusColor(status); return Container(margin: const EdgeInsets.only(bottom: 8), decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2), leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: c.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.send_outlined, color: c, size: 16)), title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis), subtitle: Padding(padding: const EdgeInsets.only(top: 2), child: Text(email.isEmpty ? 'Bot will find email • $jobType • ${(j['client_id'] ?? '').toString()}' : '$email • $jobType', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))), trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: c.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: Text(_manualStatusLabel(status), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: c))))); }).toList());
-        }),
-        const SizedBox(height: 24),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('All Companies', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)), StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('jobs_sent').snapshots(), builder: (context, s) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(6)), child: Text('${s.data?.docs.length ?? 0} total • Tap to view email', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))))]),
-        const SizedBox(height: 10),
-        TextField(onChanged: (v) => setState(() => searchQuery = v.trim().toLowerCase()), style: const TextStyle(color: Colors.white, fontSize: 13), decoration: InputDecoration(hintText: 'Search company, email or phone...', hintStyle: const TextStyle(color: Color(0xFF6B7280), fontSize: 12), prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF9CA3AF)), filled: true, fillColor: const Color(0xFF111827), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF10B981))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
-        const SizedBox(height: 10),
-        StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(_jobsLimit).snapshots(), builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFF10B981), strokeWidth: 2)));
-          final rawDocs = (snap.data?.docs ?? []).where((d) => _matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
-          if (rawDocs.isEmpty) return Card(child: Padding(padding: const EdgeInsets.all(32), child: Center(child: Column(children: [Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: Color(0xFF1F2937), shape: BoxShape.circle), child: const Icon(Icons.inbox_outlined, size: 24, color: Color(0xFF9CA3AF))), const SizedBox(height: 12), const Text('No applications sent yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)), const SizedBox(height: 4), const Text('Applications you send will appear here.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12), textAlign: TextAlign.center)]))));
-          final filteredDocs = searchQuery.isEmpty ? rawDocs : rawDocs.where((d) { final j = d.data() as Map<String, dynamic>; final c = (j['company'] ?? '').toString().toLowerCase(); final e = (j['email'] ?? '').toString().toLowerCase(); final p = _cleanPhone(j['phone']).toLowerCase(); return c.contains(searchQuery) || e.contains(searchQuery) || (p.isNotEmpty && p.contains(searchQuery)); }).toList();
-          if (filteredDocs.isEmpty) return const Card(child: Padding(padding: EdgeInsets.all(20), child: Center(child: Text('No company found.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
-          return Column(children: [
-            ...filteredDocs.map((d) { final j = d.data() as Map<String, dynamic>; final company = (j['company'] ?? 'Unknown').toString(); final email = (j['email'] ?? '').toString(); final phone = _cleanPhone(j['phone']); final jobType = (j['job_type'] ?? 'FLUTTER').toString(); final shortDate = _formatDate(j['timestamp']); final clientName = (j['client_name'] ?? '').toString(); final subtitleParts = [if (email.isNotEmpty) email, if (clientName.isNotEmpty) 'For: $clientName', if (phone.isNotEmpty) phone, if (shortDate.isNotEmpty) shortDate].join(' • '); return Container(margin: const EdgeInsets.only(bottom: 8), decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))), child: ListTile(onTap: () => _showEmailDetail(j), contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2), leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.send_outlined, color: Color(0xFF10B981), size: 16)), title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis), subtitle: Padding(padding: const EdgeInsets.only(top: 2), child: Text(subtitleParts, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))), trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(6)), child: Text(jobType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34D399)))))); }),
-            const SizedBox(height: 8),
-            OutlinedButton(onPressed: () => setState(() => _jobsLimit += 20), child: const Text('Load More', style: TextStyle(color: Colors.white))),
-          ]);
-        }),
-        const SizedBox(height: 24),
+        Row(children: [
+          const Text('Client Filter', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedClientFilter,
+                  dropdownColor: const Color(0xFF111827),
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  isExpanded: true,
+                  items: [
+                    const DropdownMenuItem(value: 'All', child: Text('All Clients')),
+                    ..._clientsCache.map((c) => DropdownMenuItem(value: (c['id'] ?? '').toString(), child: Text((c['name'] ?? '').toString()))),
+                  ],
+                  onChanged: (v) => setState(() => _selectedClientFilter = v ?? 'All'),
+                ),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(hintText: 'Search company...', hintStyle: const TextStyle(color: Color(0xFF6B7280)), filled: true, fillColor: const Color(0xFF111827), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280), size: 18), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
+              onChanged: (v) => setState(() => searchQuery = v.toLowerCase()),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: filter,
+                dropdownColor: const Color(0xFF111827),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                items: ['All', 'Sent', 'Follow-up'].map((f) => DropdownMenuItem(value: f, child: Text(f))).toList(),
+                onChanged: (v) => setState(() => filter = v ?? 'All'),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 20),
         _repliesList(),
         const SizedBox(height: 24),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Follow-ups', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(6)), child: const Text('Auto after 3 days', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))))]),
+        const Text('Recent Emails', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
         const SizedBox(height: 10),
-        StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('jobs_followups').orderBy('timestamp', descending: true).limit(_followupsLimit).snapshots(), builder: (context, snap) {
-          if (!snap.hasData) return const SizedBox.shrink();
-          final docs = (snap.data?.docs ?? []).where((d) => _matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
-          if (docs.isEmpty) return Card(child: Padding(padding: const EdgeInsets.all(20), child: Center(child: Text('No follow-ups yet.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
-          return Column(children: docs.map((d) { final j = d.data() as Map<String, dynamic>; return Container(margin: const EdgeInsets.only(bottom: 8), decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))), child: ListTile(onTap: () => _showFollowupDetail(j), leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.reply_all_outlined, color: Color(0xFF60A5FA), size: 16)), title: Text((j['company'] ?? 'Unknown').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis), subtitle: Text((j['email'] ?? '').toString(), style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))), trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)))); }).toList());
-        }),
-        const SizedBox(height: 30),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(_jobsLimit).snapshots(),
+          builder: (context, snap) {
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)));
+            var docs = snap.data!.docs.where((d) {
+              final m = d.data() as Map<String, dynamic>;
+              if (!_matchesClientFilter(m)) return false;
+              if (searchQuery.isNotEmpty) {
+                final comp = (m['company'] ?? '').toString().toLowerCase();
+                final em = (m['email'] ?? '').toString().toLowerCase();
+                if (!comp.contains(searchQuery) && !em.contains(searchQuery)) return false;
+              }
+              return true;
+            }).toList();
+            if (docs.isEmpty) return Card(child: Padding(padding: const EdgeInsets.all(20), child: Center(child: Text(searchQuery.isEmpty ? 'No emails yet. Bot will start sending soon.' : 'No match for "$searchQuery"', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12), textAlign: TextAlign.center))));
+            return Column(children: [
+              ...docs.map((d) {
+                final m = d.data() as Map<String, dynamic>;
+                final company = (m['company'] ?? 'Unknown').toString();
+                final email = (m['email'] ?? '').toString();
+                final clientName = _clientDisplayName(m);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+                  child: ListTile(
+                    onTap: () => _showEmailDetail(m),
+                    leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.mail_outline, color: Color(0xFF34D399), size: 16)),
+                    title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('$email • $clientName • ${_formatDate(m['timestamp'])}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+                  ),
+                );
+              }),
+              TextButton(onPressed: () => setState(() => _jobsLimit += 20), child: const Text('Load More', style: TextStyle(color: Color(0xFF10B981)))),
+            ]);
+          },
+        ),
+        const SizedBox(height: 20),
+        const Text('Follow-ups', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+        const SizedBox(height: 10),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('jobs_followups').orderBy('timestamp', descending: true).limit(_followupsLimit).snapshots(),
+          builder: (context, snap) {
+            if (!snap.hasData) return const SizedBox.shrink();
+            var docs = snap.data!.docs.where((d) { final m = d.data() as Map<String, dynamic>; return _matchesClientFilter(m); }).toList();
+            if (docs.isEmpty) return Card(child: const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No follow-ups yet.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
+            return Column(children: docs.map((d) {
+              final m = d.data() as Map<String, dynamic>;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+                child: ListTile(onTap: () => _showFollowupDetail(m), leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.reply_outlined, color: Color(0xFFF59E0B), size: 16)), title: Text((m['company'] ?? 'Unknown').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)), subtitle: Text((m['email'] ?? '').toString(), style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))), trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280))),
+              );
+            }).toList());
+          },
+        ),
+        const SizedBox(height: 20),
+        const Text('Manual Queue', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+        const SizedBox(height: 10),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(),
+          builder: (context, snap) {
+            if (!snap.hasData) return const SizedBox.shrink();
+            var docs = snap.data!.docs;
+            if (docs.isEmpty) return Card(child: const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No manual requests.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
+            return Column(children: docs.map((d) {
+              final m = d.data() as Map<String, dynamic>;
+              final st = (m['status'] ?? 'pending').toString();
+              return Container(margin: const EdgeInsets.only(bottom: 8), decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))), child: ListTile(leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: _manualStatusColor(st).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.schedule, color: _manualStatusColor(st), size: 16)), title: Text((m['company'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)), subtitle: Text('${m['email'] ?? ''} • ${_manualStatusLabel(st)}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))));
+            }).toList());
+          },
+        ),
+        const SizedBox(height: 40),
       ]))),
     );
   }
