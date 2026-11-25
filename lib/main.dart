@@ -88,6 +88,30 @@ class _DashboardState extends State<Dashboard> {
     return s.toUpperCase();
   }
 
+  // FIX 1: Human readable skill - VIDEO EDITING -> Video Editing, FLUTTER -> Flutter
+  String _skillDisplay(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return 'Flutter';
+    if (s.toUpperCase() == 'FLUTTER') return 'Flutter';
+    if (s.toUpperCase() == 'BACKEND') return 'Backend';
+    if (s.toUpperCase() == 'AI' || s.toUpperCase() == 'LLM') return 'AI';
+    if (s.toUpperCase() == 'FULLSTACK') return 'Full-Stack';
+    // Title case for custom: VIDEO EDITING -> Video Editing
+    return s.toLowerCase().split(' ').map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1)).join(' ');
+  }
+
+  // FIX 1: Role line for ANY skill - not hardcoded Flutter
+  String _roleLineForSkill(String rawSkill) {
+    final s = rawSkill.trim().toUpperCase();
+    if (s == 'FLUTTER') return 'Flutter + AI mobile apps';
+    if (s == 'BACKEND') return 'backend systems and APIs';
+    if (s == 'AI' || s == 'LLM') return 'AI features, LLM apps and automation';
+    if (s == 'FULLSTACK') return 'full-stack web and mobile apps';
+    if (s.isEmpty) return 'Flutter + AI mobile apps';
+    // Custom: Video Editing, Welding, Graphic Design, etc.
+    return _skillDisplay(rawSkill);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -180,6 +204,21 @@ class _DashboardState extends State<Dashboard> {
     final match = _clientsCache.where((c) => (c['id'] ?? '').toString().toLowerCase() == f).toList();
     final name = match.isNotEmpty ? (match.first['name'] ?? '').toString().toLowerCase() : f;
     return cn == name || cid == f || cn == f;
+  }
+
+  // FIX 2 helper: Manual jobs store client_id, not client_name, so match both
+  bool _matchesManualFilter(Map<String, dynamic> j) {
+    if (_selectedClientFilter == 'All') return true;
+    final cid = (j['client_id'] ?? '').toString().toLowerCase();
+    final cn = (j['client_name'] ?? '').toString().toLowerCase();
+    final f = _selectedClientFilter.toLowerCase();
+    if (cid == f || cn == f) return true;
+    final match = _clientsCache.where((c) => (c['id'] ?? '').toString().toLowerCase() == f).toList();
+    if (match.isNotEmpty) {
+      final name = (match.first['name'] ?? '').toString().toLowerCase();
+      if (cn == name) return true;
+    }
+    return false;
   }
 
   Future<void> _setActiveClient(String clientId) async {
@@ -603,36 +642,38 @@ class _DashboardState extends State<Dashboard> {
 
   Widget _detailRow(String label, String value) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 70, child: Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w600))), Expanded(child: SelectableText(value, style: const TextStyle(fontSize: 12, color: Colors.white)))]);
 
+  // FIX 1: _buildEmailBody now uses real skill, not hardcoded Flutter
   String _buildEmailBody(Map<String, dynamic> j) {
     final saved = (j['email_body'] ?? j['message'] ?? j['body'] ?? j['email_text'] ?? '').toString().trim();
     if (saved.isNotEmpty) return saved;
     final company = (j['company'] ?? 'your team').toString();
-    final jobType = (j['job_type'] ?? 'FLUTTER').toString();
+    final jobType = (j['job_type'] ?? j['skill'] ?? 'FLUTTER').toString();
     final why = (j['why'] ?? j['reason'] ?? '').toString().trim();
     final clientType = (j['client_type'] ?? '').toString();
     final clientName = (j['client_name'] ?? 'Habeeb').toString();
     if (clientType == 'job_seeker') {
-      final job = (j['job_wanted'] ?? jobType).toString();
+      final job = (j['job_wanted'] ?? j['job'] ?? jobType).toString();
       return "Dear Hiring Manager at $company,\n\nMy name is $clientName. I am applying for the $job position at $company.\n\n${why.isNotEmpty ? why : 'I saw $company is hiring and I am interested in the $job role. I am available immediately.'}\n\nI have attached my CV for your review. I would be grateful for an opportunity to discuss how I can contribute to your team.\n\nThank you for your time.\n\nKind regards,\n$clientName\n$job";
     }
-    final whyLine = why.isNotEmpty ? why : "I came across $company and liked what you're building - I build Flutter + AI mobile apps, dashboards and automation bots for teams like yours.";
-    String roleLine = 'Flutter + AI mobile apps';
-    if (jobType == 'BACKEND') roleLine = 'backend systems and APIs';
-    if (jobType == 'AI' || jobType == 'LLM') roleLine = 'AI features, LLM apps and automation';
-    if (jobType == 'FULLSTACK') roleLine = 'full-stack web and mobile apps';
-    return "Hi $company Team,\n\n$whyLine\n\nI'm Habeeb Armaya'u, a Software Engineer. I build $roleLine, dashboards and automation bots for teams building that kind of product.\n\nI would love to help $company ship faster - whether it's a mobile app, dashboard, or internal tool.\n\nWould you be open to a quick 10-minute call this week to see if I can help?\n\nBest regards,\nHabeeb Armaya'u\nSoftware Engineer\nFlutter + AI Developer";
+    // Freelancer - use actual skill
+    final skillDisp = _skillDisplay(jobType);
+    final roleLine = _roleLineForSkill(jobType);
+    final whyLine = why.isNotEmpty ? why : "I came across $company and liked what you're building - I help teams with $skillDisp, and I can support your team with that.";
+    return "Hi $company Team,\n\n$whyLine\n\nI'm Habeeb Armaya'u, a Software Engineer. I help teams with $roleLine, dashboards and automation for teams building that kind of product.\n\nI would love to help $company ship faster - whether it's $skillDisp, a mobile app, dashboard, or internal tool.\n\nWould you be open to a quick 10-minute call this week to see if I can help?\n\nBest regards,\nHabeeb Armaya'u\nSoftware Engineer\n$skillDisp Developer";
   }
 
+  // FIX 1: _buildSubject now uses real skill
   String _buildSubject(Map<String, dynamic> j) {
     final saved = (j['subject'] ?? j['email_subject'] ?? '').toString().trim();
     if (saved.isNotEmpty) return saved;
     final company = (j['company'] ?? '').toString();
-    final jobType = (j['job_type'] ?? 'FLUTTER').toString();
+    final jobType = (j['job_type'] ?? j['skill'] ?? 'FLUTTER').toString();
     if ((j['client_type'] ?? '').toString() == 'job_seeker') {
       final name = (j['client_name'] ?? 'Applicant').toString();
       return "Application for $jobType at $company - $name";
     }
-    return "Flutter + AI Developer for $company - Can I help your team ship faster? ($jobType)";
+    final skillDisp = _skillDisplay(jobType);
+    return "$skillDisp Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
   Future<Map<String, dynamic>> _fetchMergedDetail(Map<String, dynamic> j) async {
@@ -720,7 +761,6 @@ class _DashboardState extends State<Dashboard> {
     final companyCtrl = TextEditingController(); final emailCtrl = TextEditingController();
     final customSkillCtrl = TextEditingController();
     String jobType = 'FLUTTER'; String selectedClient = _activeClientId;
-    // Any skill supported: presets for speed + CUSTOM for anything else
     final jobTypes = ['FLUTTER', 'BACKEND', 'AI', 'LLM', 'FULLSTACK', 'NURSE', 'ACCOUNTANT', 'TEACHER', 'DRIVER', 'CHEF', 'CUSTOM'];
     showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: const Color(0xFF111827), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(builder: (ctx2, setSB) => Padding(padding: EdgeInsets.only(bottom: MediaQuery.of(ctx2).viewInsets.bottom, left: 20, right: 20, top: 20), child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -735,7 +775,6 @@ class _DashboardState extends State<Dashboard> {
         DropdownButtonFormField<String>(value: _clientsCache.any((c) => (c['id'] ?? '') == selectedClient) ? selectedClient : null, decoration: InputDecoration(filled: true, fillColor: const Color(0xFF090D16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)), dropdownColor: const Color(0xFF111827), style: const TextStyle(color: Colors.white), hint: const Text('Select Client', style: TextStyle(color: Color(0xFF6B7280))), items: _clientsCache.map((c) => DropdownMenuItem<String>(value: (c['id'] ?? '').toString(), child: Text('${c['name']} (${c['client_type']})', style: const TextStyle(color: Colors.white)))).toList(), onChanged: (v) => setSB(() => selectedClient = v ?? _activeClientId)),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(value: jobType, decoration: InputDecoration(filled: true, fillColor: const Color(0xFF090D16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)), dropdownColor: const Color(0xFF111827), style: const TextStyle(color: Colors.white), items: jobTypes.map((j) => DropdownMenuItem(value: j, child: Text(j == 'CUSTOM' ? 'Other / Custom Skill' : j, style: const TextStyle(color: Colors.white)))).toList(), onChanged: (v) => setSB(() => jobType = v ?? 'FLUTTER')),
-        // NEW: Custom skill input - shows only when CUSTOM is selected
         if (jobType == 'CUSTOM') ...[
           const SizedBox(height: 10),
           _clientTextField(customSkillCtrl, 'Enter custom skill e.g. Video Editing, Graphic Design, Welding'),
@@ -745,7 +784,6 @@ class _DashboardState extends State<Dashboard> {
         const SizedBox(height: 16),
         SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: () async {
           final company = companyCtrl.text.trim(); if (company.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a company name.'), backgroundColor: Colors.red)); return; }
-          // Resolve final skill: CUSTOM -> use text field, else use preset
           String finalSkill = jobType;
           if (jobType == 'CUSTOM') {
             if (customSkillCtrl.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a custom skill.'), backgroundColor: Colors.red)); return; }
@@ -761,7 +799,9 @@ class _DashboardState extends State<Dashboard> {
             if (proceed2 != true) return;
           }
           try {
-            await FirebaseFirestore.instance.collection('pending_jobs').add({'company': company, 'email': emailCtrl.text.trim(), 'job_type': finalSkill, 'skill': finalSkill, 'custom_skill': jobType == 'CUSTOM', 'client_id': selectedClient, 'status': 'pending', 'created_at': DateTime.now().toIso8601String(), 'timestamp': DateTime.now().toIso8601String()});
+            // FIX: Also save client_name so filter works even if bot overwrites client_id
+            final clientName = selClient.isNotEmpty ? (selClient.first['name'] ?? '').toString() : '';
+            await FirebaseFirestore.instance.collection('pending_jobs').add({'company': company, 'email': emailCtrl.text.trim(), 'job_type': finalSkill, 'skill': finalSkill, 'custom_skill': jobType == 'CUSTOM', 'client_id': selectedClient, 'client_name': clientName, 'status': 'pending', 'created_at': DateTime.now().toIso8601String(), 'timestamp': DateTime.now().toIso8601String()});
             if (context.mounted) { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Manual request queued for $finalSkill. The bot will process it shortly.'), backgroundColor: Color(0xFF10B981))); }
           } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red)); }
         }, child: const Text('Queue Manual Send', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)))),
@@ -817,6 +857,36 @@ class _DashboardState extends State<Dashboard> {
       case 'blocked_no_gmail': return 'Not sent - Gmail required';
       case 'paused': return 'Paused';
       default: return s;
+    }
+  }
+
+  // FIX 3: Retry / Delete Manual job
+  Future<void> _showManualActions(String docId, String company, String status) async {
+    final action = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xFF111827),
+      title: Text(company, style: const TextStyle(color: Colors.white)),
+      content: Text('Status: ${_manualStatusLabel(status)}\n\nLong-press action:', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, 'cancel'), child: const Text('Cancel')),
+        if (status.toLowerCase() != 'pending' && status.toLowerCase() != 'processing')
+          TextButton(onPressed: () => Navigator.pop(ctx, 'retry'), child: const Text('Retry - Set to Pending', style: TextStyle(color: Color(0xFF10B981)))),
+        TextButton(onPressed: () => Navigator.pop(ctx, 'delete'), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+      ],
+    ));
+    if (action == 'retry') {
+      try {
+        await FirebaseFirestore.instance.collection('pending_jobs').doc(docId).update({'status': 'pending', 'retry_at': DateTime.now().toIso8601String(), 'error': ''});
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Moved back to Pending. Bot will retry.'), backgroundColor: Color(0xFF10B981)));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Retry failed: $e'), backgroundColor: Colors.red));
+      }
+    } else if (action == 'delete') {
+      try {
+        await FirebaseFirestore.instance.collection('pending_jobs').doc(docId).delete();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Manual job deleted.'), backgroundColor: Color(0xFF10B981)));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -1025,18 +1095,27 @@ class _DashboardState extends State<Dashboard> {
         ),
         const SizedBox(height: 20),
         const Text('Manual Queue', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+        const SizedBox(height: 4),
+        const Text('Long-press an item to Retry or Delete.', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(),
           builder: (context, snap) {
             if (!snap.hasData) return const SizedBox.shrink();
-            var docs = snap.data!.docs;
+            // FIX 2: Filter by selected client
+            var docs = snap.data!.docs.where((d) { final m = d.data() as Map<String, dynamic>; return _matchesManualFilter(m); }).toList();
             if (docs.isEmpty) return Card(child: const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No manual requests.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
             return Column(children: docs.map((d) {
               final m = d.data() as Map<String, dynamic>;
               final st = (m['status'] ?? 'pending').toString();
               final skillLabel = (m['job_type'] ?? m['skill'] ?? '').toString();
-              return Container(margin: const EdgeInsets.only(bottom: 8), decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))), child: ListTile(leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: _manualStatusColor(st).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.schedule, color: _manualStatusColor(st), size: 16)), title: Text((m['company'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)), subtitle: Text('${m['email'] ?? ''} - ${_manualStatusLabel(st)}${skillLabel.isNotEmpty ? ' - $skillLabel' : ''}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))));
+              return Container(margin: const EdgeInsets.only(bottom: 8), decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))), child: ListTile(
+                onLongPress: () => _showManualActions(d.id, (m['company'] ?? '').toString(), st),
+                leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: _manualStatusColor(st).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.schedule, color: _manualStatusColor(st), size: 16)),
+                title: Text((m['company'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
+                subtitle: Text('${m['email'] ?? ''} - ${_manualStatusLabel(st)}${skillLabel.isNotEmpty ? ' - $skillLabel' : ''}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                trailing: const Icon(Icons.more_horiz, size: 16, color: Color(0xFF6B7280)),
+              ));
             }).toList());
           },
         ),
