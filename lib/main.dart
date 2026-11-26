@@ -1472,3 +1472,840 @@ class _DashboardState extends State<Dashboard> {
       },
     );
   }
+    void _showAddManualDialog() {
+    final companyCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final customSkillCtrl = TextEditingController();
+    String jobType = 'FLUTTER';
+    String selectedClient = _activeClientId;
+    final jobTypes = ['FLUTTER', 'BACKEND', 'AI', 'LLM', 'FULLSTACK', 'NURSE', 'ACCOUNTANT', 'TEACHER', 'DRIVER', 'CHEF', 'CUSTOM'];
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111827),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx2, setSB) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx2).viewInsets.bottom, left: 20, right: 20, top: 20),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Send Manually', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+                    const SizedBox(height: 4),
+                    const Text('If no email is provided, the bot will attempt to find one, then send for the selected client. Any skill is supported.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+                    const SizedBox(height: 14),
+                    _clientTextField(companyCtrl, 'Company / Hospital e.g. Nizamiye Hospital'),
+                    const SizedBox(height: 10),
+                    _clientTextField(emailCtrl, 'Email (optional - bot will find if empty)'),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: _clientsCache.any((c) => (c['id'] ?? '') == selectedClient) ? selectedClient : null,
+                      decoration: InputDecoration(filled: true, fillColor: const Color(0xFF090D16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
+                      dropdownColor: const Color(0xFF111827),
+                      style: const TextStyle(color: Colors.white),
+                      hint: const Text('Select Client', style: TextStyle(color: Color(0xFF6B7280))),
+                      items: _clientsCache.map((c) => DropdownMenuItem<String>(value: (c['id'] ?? '').toString(), child: Text('${c['name']} (${c['client_type']})', style: const TextStyle(color: Colors.white)))).toList(),
+                      onChanged: (v) => setSB(() => selectedClient = v ?? _activeClientId),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: jobType,
+                      decoration: InputDecoration(filled: true, fillColor: const Color(0xFF090D16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
+                      dropdownColor: const Color(0xFF111827),
+                      style: const TextStyle(color: Colors.white),
+                      items: jobTypes.map((j) => DropdownMenuItem(value: j, child: Text(j == 'CUSTOM' ? 'Other / Custom Skill' : j, style: const TextStyle(color: Colors.white)))).toList(),
+                      onChanged: (v) => setSB(() => jobType = v ?? 'FLUTTER'),
+                    ),
+                    if (jobType == 'CUSTOM') ...[
+                      const SizedBox(height: 10),
+                      _clientTextField(customSkillCtrl, 'Enter custom skill e.g. Video Editing, Graphic Design, Welding'),
+                      const SizedBox(height: 6),
+                      const Text('Any skill is supported. The bot will use this skill to find and contact relevant companies.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11)),
+                    ],
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        onPressed: () async {
+                          final company = companyCtrl.text.trim();
+                          if (company.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a company name.'), backgroundColor: Colors.red));
+                            return;
+                          }
+                          String finalSkill = jobType;
+                          if (jobType == 'CUSTOM') {
+                            if (customSkillCtrl.text.trim().isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a custom skill.'), backgroundColor: Colors.red));
+                              return;
+                            }
+                            finalSkill = _normalizeSkill(customSkillCtrl.text);
+                          }
+                          if (_isRecruiterName(company)) {
+                            final proceed = await showDialog<bool>(
+                              context: context,
+                              builder: (dCtx) => AlertDialog(
+                                backgroundColor: const Color(0xFF111827),
+                                title: const Text('Recruitment Agency Detected', style: TextStyle(color: Colors.white)),
+                                content: Text('"$company" appears to be a recruitment or staffing agency.\n\nCareerPilot only contacts direct employers. This request will be marked as not sent.\n\nDo you still want to queue it?', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancel')),
+                                  TextButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('Queue Anyway', style: TextStyle(color: Colors.orange))),
+                                ],
+                              ),
+                            );
+                            if (proceed != true) return;
+                          }
+                          final selClient = _clientsCache.where((c) => (c['id'] ?? '').toString() == selectedClient).toList();
+                          if (selClient.isNotEmpty && selClient.first['gmail_connected'] != true) {
+                            final proceed2 = await showDialog<bool>(
+                              context: context,
+                              builder: (dCtx) => AlertDialog(
+                                backgroundColor: const Color(0xFF111827),
+                                title: const Text('Gmail Not Connected', style: TextStyle(color: Colors.white)),
+                                content: Text('${selClient.first['name']} has not connected Gmail.\n\nSending for this client will remain paused until Gmail is connected. No other account will be used.\n\nQueue anyway? It will be recorded as not sent - Gmail required.', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancel')),
+                                  TextButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('Queue Anyway', style: TextStyle(color: Colors.orange))),
+                                ],
+                              ),
+                            );
+                            if (proceed2 != true) return;
+                          }
+                          try {
+                            final clientName = selClient.isNotEmpty ? (selClient.first['name'] ?? '').toString() : '';
+                            await FirebaseFirestore.instance.collection('pending_jobs').add({
+                              'company': company,
+                              'email': emailCtrl.text.trim(),
+                              'job_type': finalSkill,
+                              'skill': finalSkill,
+                              'custom_skill': jobType == 'CUSTOM',
+                              'client_id': selectedClient,
+                              'client_name': clientName,
+                              'status': 'pending',
+                              'created_at': DateTime.now().toIso8601String(),
+                              'timestamp': DateTime.now().toIso8601String(),
+                            });
+                            if (context.mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Manual request queued for $finalSkill. The bot will process it shortly.'), backgroundColor: const Color(0xFF10B981)));
+                            }
+                          } catch (e) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                          }
+                        },
+                        child: const Text('Queue Manual Send', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildGraph(List<QueryDocumentSnapshot> docs) {
+    final now = DateTime.now();
+    final Map<String, int> perDay = {};
+    for (var i = 6; i >= 0; i--) {
+      final d = now.subtract(Duration(days: i));
+      perDay[_dayKey(d)] = 0;
+    }
+    for (final d in docs) {
+      final m = d.data() as Map<String, dynamic>;
+      final dt = _parseDate(m['timestamp'] ?? m['date']);
+      if (dt == null) continue;
+      final k = _dayKey(dt);
+      if (perDay.containsKey(k)) perDay[k] = (perDay[k] ?? 0) + 1;
+    }
+    final maxV = perDay.values.fold<int>(1, (a, b) => b > a ? b : a);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Last 7 Days', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: perDay.entries.map((e) {
+                final h = 8 + (e.value / maxV * 60);
+                return Expanded(
+                  child: Column(
+                    children: [
+                      Text('${e.value}', style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
+                      const SizedBox(height: 4),
+                      Container(height: h, margin: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: const Color(0xFF10B981), borderRadius: BorderRadius.circular(4))),
+                      const SizedBox(height: 4),
+                      Text(_dayLabel(DateTime.parse(e.key)), style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // FIX 2 - Replies: filter by same Client Filter + clamp to 100% - never 1300% again
+  Widget _repliesMetrics(int totalSent) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('jobs_replies').snapshots(),
+      builder: (context, snap) {
+        final all = snap.data?.docs ?? [];
+        final filtered = all.where((d) => _matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
+        final replies = filtered.length;
+        double rate = 0.0;
+        if (totalSent > 0) {
+          rate = (replies / totalSent * 100);
+          if (rate > 100) rate = 100;
+          if (rate < 0) rate = 0;
+        }
+        return Row(
+          children: [
+            _metric('Replies', '$replies', Icons.mark_email_read_outlined, 'Companies replied'),
+            const SizedBox(width: 12),
+            _metric('Reply Rate', '${rate.toStringAsFixed(1)}%', Icons.trending_up, 'Response rate'),
+          ],
+        );
+      },
+    );
+  }
+
+  Color _manualStatusColor(String s) {
+    switch (s.toLowerCase()) {
+      case 'sent': return const Color(0xFF10B981);
+      case 'pending': case 'processing': return const Color(0xFFF59E0B);
+      case 'failed': case 'bad_email': case 'no_email_found': return const Color(0xFFEF4444);
+      case 'duplicate': return const Color(0xFF3B82F6);
+      case 'blocked_recruiter': case 'blocked_irrelevant': case 'blocked_no_gmail': return const Color(0xFFEF4444);
+      case 'paused': return const Color(0xFF9CA3AF);
+      default: return const Color(0xFF9CA3AF);
+    }
+  }
+
+  String _manualStatusLabel(String s) {
+    switch (s.toLowerCase()) {
+      case 'pending': return 'Pending';
+      case 'processing': return 'Sending';
+      case 'sent': return 'Sent';
+      case 'failed': return 'Failed';
+      case 'bad_email': return 'Invalid email';
+      case 'no_email_found': return 'No email found';
+      case 'duplicate': return 'Duplicate';
+      case 'blocked_recruiter': return 'Not sent - Recruitment agency';
+      case 'blocked_irrelevant': return 'Not sent - Not relevant';
+      case 'blocked_no_gmail': return 'Not sent - Gmail required';
+      case 'paused': return 'Paused';
+      default: return s;
+    }
+  }
+
+  Future<void> _showManualActions(String docId, String company, String status) async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF111827),
+        title: Text(company, style: const TextStyle(color: Colors.white)),
+        content: Text('Status: ${_manualStatusLabel(status)}\n\nLong-press action:', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, 'cancel'), child: const Text('Cancel')),
+          if (status.toLowerCase() != 'pending' && status.toLowerCase() != 'processing')
+            TextButton(onPressed: () => Navigator.pop(ctx, 'retry'), child: const Text('Retry - Set to Pending', style: TextStyle(color: Color(0xFF10B981)))),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'delete'), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (action == 'retry') {
+      try {
+        await FirebaseFirestore.instance.collection('pending_jobs').doc(docId).update({'status': 'pending', 'retry_at': DateTime.now().toIso8601String(), 'error': ''});
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Moved back to Pending. Bot will retry.'), backgroundColor: Color(0xFF10B981)));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Retry failed: $e'), backgroundColor: Colors.red));
+      }
+    } else if (action == 'delete') {
+      try {
+        await FirebaseFirestore.instance.collection('pending_jobs').doc(docId).delete();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Manual job deleted.'), backgroundColor: Color(0xFF10B981)));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  void _showReplyDetail(Map<String, dynamic> r) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111827),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          maxChildSize: 0.95,
+          minChildSize: 0.5,
+          expand: false,
+          builder: (ctx2, scrollCtrl) {
+            return SingleChildScrollView(
+              controller: scrollCtrl,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4)))),
+                  const SizedBox(height: 16),
+                  Text((r['company'] ?? 'Unknown').toString(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+                  const SizedBox(height: 4),
+                  Text((r['email'] ?? '').toString(), style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                  const SizedBox(height: 4),
+                  Text((r['subject'] ?? '').toString(), style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: const Color(0xFF090D16), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))),
+                    child: SelectableText((r['reply_text'] ?? r['snippet'] ?? '').toString(), style: const TextStyle(fontSize: 13, color: Colors.white, height: 1.5)),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                          onPressed: () => _whatsAppReport(r),
+                          icon: const Icon(Icons.chat, color: Colors.white, size: 16),
+                          label: const Text('WhatsApp Report', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                          onPressed: () => _exportSingleEmailPdf(r),
+                          icon: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 16),
+                          label: const Text('PDF Report', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                      onPressed: () async {
+                        final email = (r['email'] ?? '').toString();
+                        if (email.isNotEmpty) {
+                          final uri = Uri.parse('mailto:$email?subject=Re: ${(r['subject'] ?? '').toString()}');
+                          try {
+                            await launchUrl(uri);
+                          } catch (_) {}
+                        }
+                      },
+                      icon: const Icon(Icons.reply, color: Colors.white, size: 16),
+                      label: const Text('Reply in Gmail', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _repliesList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('jobs_replies').orderBy('timestamp', descending: true).limit(20).snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData) return const SizedBox.shrink();
+        var docs = snap.data!.docs.where((d) {
+          final r = d.data() as Map<String, dynamic>;
+          return _matchesClientFilter(r);
+        }).toList();
+        if (docs.isEmpty) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: Column(
+                  children: [
+                    Container(padding: const EdgeInsets.all(10), decoration: const BoxDecoration(color: Color(0xFF1F2937), shape: BoxShape.circle), child: const Icon(Icons.reply_outlined, size: 22, color: Color(0xFF9CA3AF))),
+                    const SizedBox(height: 10),
+                    const Text('No replies yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    const Text('When a company replies in Gmail, it will appear here automatically.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11), textAlign: TextAlign.center),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Replies', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(6)), child: Text('${docs.length} total - Tap to view reply', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...docs.map((d) {
+              final r = d.data() as Map<String, dynamic>;
+              final company = (r['company'] ?? 'Unknown').toString();
+              final email = (r['email'] ?? '').toString();
+              final subject = (r['subject'] ?? '').toString();
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3))),
+                child: ListTile(
+                  onTap: () => _showReplyDetail(r),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                  leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.reply_outlined, color: Color(0xFFF59E0B), size: 16)),
+                  title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Padding(padding: const EdgeInsets.only(top: 2), child: Text(subject.isNotEmpty ? '$subject - $email' : email, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))),
+                  trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _metric(String title, String value, IconData icon, String sub) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [Icon(icon, size: 14, color: const Color(0xFF10B981)), const SizedBox(width: 6), Text(title, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))]),
+            const SizedBox(height: 8),
+            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+            const SizedBox(height: 2),
+            Text(sub, style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _systemRow(String title, String status) {
+    return Row(
+      children: [
+        Expanded(child: Text(title, style: const TextStyle(fontSize: 13, color: Colors.white))),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: Text(status, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34D399)))),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.asset(
+                'assets/icon.png',
+                width: 38,
+                height: 38,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]), borderRadius: BorderRadius.circular(10)),
+                  child: const Center(child: Text('C', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18))),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('CareerPilot AI', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
+                SizedBox(height: 1),
+                Text("Habeeb Armaya'u - Software Engineer", style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(tooltip: 'Export All PDF', onPressed: _exportAllEmailsPdf, icon: const Icon(Icons.picture_as_pdf, color: Colors.white)),
+          Container(
+            margin: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(color: const Color(0xFF064E3B).withValues(alpha: 0.6), borderRadius: BorderRadius.circular(100), border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3))),
+            child: const Row(children: [Icon(Icons.circle, size: 6, color: Color(0xFF10B981)), SizedBox(width: 6), Text('Connected', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF34D399)))]),
+          ),
+        ],
+        bottom: const PreferredSize(preferredSize: Size.fromHeight(1), child: Divider(height: 1, color: Color(0xFF1F2937))),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAddManualDialog,
+        backgroundColor: const Color(0xFF10B981),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('Send Manually', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+      ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() {});
+        },
+        color: const Color(0xFF10B981),
+        backgroundColor: const Color(0xFF111827),
+        child: SingleChildScrollView(
+          // FIX 3 - Smooth scroll
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Overview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.3)),
+                      SizedBox(height: 2),
+                      Text('Your applications and email activity', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      IconButton(onPressed: _showBotSettingsDialog, icon: const Icon(Icons.settings, size: 18, color: Color(0xFF9CA3AF)), style: IconButton.styleFrom(backgroundColor: const Color(0xFF111827), side: const BorderSide(color: Color(0xFF1F2937)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))),
+                      const SizedBox(width: 8),
+                      IconButton(onPressed: () => setState(() {}), icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF9CA3AF)), style: IconButton.styleFrom(backgroundColor: const Color(0xFF111827), side: const BorderSide(color: Color(0xFF1F2937)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance.collection('bot_status').doc('current').snapshots(),
+                builder: (context, snap) {
+                  final data = snap.data?.data() as Map<String, dynamic>?;
+                  final rawCompany = (data?['last_company'] ?? '').toString().trim();
+                  final lastCompany = (rawCompany.isEmpty || rawCompany.startsWith('Waiting ')) ? 'Waiting' : rawCompany;
+                  final lastRun = (data?['last_run'] ?? 'No recent activity').toString();
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(100).snapshots(),
+                    builder: (context, snap2) {
+                      final allDocs = snap2.data?.docs ?? [];
+                      final sentTodayFirestore = allDocs.where((d) {
+                        final m = d.data() as Map<String, dynamic>;
+                        if (!_matchesClientFilter(m)) return false;
+                        final dt = _parseDate(m['timestamp']);
+                        return dt != null && _dayKey(dt) == _dayKey(DateTime.now());
+                      }).length;
+                      return Container(
+                        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1F2937))),
+                        child: Padding(
+                          padding: const EdgeInsets.all(18),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.bolt, size: 16, color: Color(0xFF10B981))),
+                                  const SizedBox(width: 10),
+                                  const Text('Bot Status', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+                                  const Spacer(),
+                                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: const Text('LIVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF34D399)))),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('$sentTodayFirestore', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+                                        const SizedBox(height: 2),
+                                        const Text('Sent Today - Firestore', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Text('Last: $lastCompany', style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                              Text(lastRun, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                              const SizedBox(height: 12),
+                              _systemRow('Bot', 'Online'),
+                              const SizedBox(height: 8),
+                              _systemRow('Gmail', 'Connected'),
+                              const SizedBox(height: 8),
+                              _systemRow('Active Client', _activeClientDisplayName),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(100).snapshots(),
+                builder: (context, snap) {
+                  final allDocs = snap.data?.docs ?? [];
+                  final filtered = allDocs.where((d) {
+                    final m = d.data() as Map<String, dynamic>;
+                    return _matchesClientFilter(m);
+                  }).toList();
+                  final totalSent = filtered.length;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildGraph(filtered),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'),
+                          const SizedBox(width: 12),
+                          _metric('Today', '${filtered.where((d) { final m = d.data() as Map<String, dynamic>; final dt = _parseDate(m['timestamp']); return dt != null && _dayKey(dt) == _dayKey(DateTime.now()); }).length}', Icons.today_outlined, 'Sent today'),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _repliesMetrics(totalSent),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              _clientsSection(),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  const Text('Client Filter', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedClientFilter,
+                          dropdownColor: const Color(0xFF111827),
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          isExpanded: true,
+                          items: [
+                            const DropdownMenuItem(value: 'All', child: Text('All Clients')),
+                            ..._clientsCache.map((c) => DropdownMenuItem(value: (c['id'] ?? '').toString(), child: Text((c['name'] ?? '').toString()))),
+                          ],
+                          onChanged: (v) => setState(() => _selectedClientFilter = v ?? 'All'),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Search company...',
+                        hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+                        filled: true,
+                        fillColor: const Color(0xFF111827),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
+                        prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280), size: 18),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      onChanged: (v) => setState(() => searchQuery = v.toLowerCase()),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: filter,
+                        dropdownColor: const Color(0xFF111827),
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        items: ['All', 'Sent', 'Follow-up'].map((f) => DropdownMenuItem(value: f, child: Text(f))).toList(),
+                        onChanged: (v) => setState(() => filter = v ?? 'All'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _collapsibleHeader('Replies', _showReplies, () => setState(() => _showReplies = !_showReplies)),
+              if (_showReplies) ...[
+                const SizedBox(height: 10),
+                _repliesList(),
+              ],
+              const SizedBox(height: 24),
+              _collapsibleHeader('Recent Emails', _showRecentEmails, () => setState(() => _showRecentEmails = !_showRecentEmails)),
+              if (_showRecentEmails) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  children: ['All', 'Replied', 'No Reply'].map((f) {
+                    final sel = _recentEmailFilter == f;
+                    return ChoiceChip(
+                      label: Text(f, style: TextStyle(color: sel ? Colors.white : const Color(0xFF9CA3AF), fontSize: 12)),
+                      selected: sel,
+                      selectedColor: const Color(0xFF10B981),
+                      backgroundColor: const Color(0xFF1F2937),
+                      onSelected: (_) => setState(() => _recentEmailFilter = f),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 10),
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(_jobsLimit).snapshots(),
+                  builder: (context, snap) {
+                    if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)));
+                    var docs = snap.data!.docs.where((d) {
+                      final m = d.data() as Map<String, dynamic>;
+                      if (!_matchesClientFilter(m)) return false;
+                      if (searchQuery.isNotEmpty) {
+                        final comp = (m['company'] ?? '').toString().toLowerCase();
+                        final em = (m['email'] ?? '').toString().toLowerCase();
+                        if (!comp.contains(searchQuery) && !em.contains(searchQuery)) return false;
+                      }
+                      if (_recentEmailFilter == 'Replied') {
+                        final rs = (m['reply_status'] ?? m['status'] ?? '').toString().toLowerCase();
+                        if (rs != 'replied' && rs != 'reply' && m['has_reply'] != true) return false;
+                      }
+                      if (_recentEmailFilter == 'No Reply') {
+                        final rs = (m['reply_status'] ?? m['status'] ?? '').toString().toLowerCase();
+                        if (rs == 'replied' || m['has_reply'] == true) return false;
+                      }
+                      return true;
+                    }).toList();
+                    if (docs.isEmpty) {
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Center(child: Text(searchQuery.isEmpty ? 'No emails yet. The bot will start sending soon.' : 'No match for "$searchQuery"', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12), textAlign: TextAlign.center)),
+                        ),
+                      );
+                    }
+                    return Column(
+                      children: [
+                        ...docs.map((d) {
+                          final m = d.data() as Map<String, dynamic>;
+                          final company = (m['company'] ?? 'Unknown').toString();
+                          final email = (m['email'] ?? '').toString();
+                          final clientName = _clientDisplayName(m);
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+                            child: ListTile(
+                              onTap: () => _showEmailDetail(m),
+                              leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.mail_outline, color: Color(0xFF34D399), size: 16)),
+                              title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                              subtitle: Text('$email - $clientName - ${_formatDate(m['timestamp'])}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                              trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+                            ),
+                          );
+                        }),
+                        TextButton(onPressed: () => setState(() => _jobsLimit += 20), child: const Text('Load More', style: TextStyle(color: Color(0xFF10B981)))),
+                      ],
+                    );
+                  },
+                ),
+              ],
+              const SizedBox(height: 20),
+              _collapsibleHeader('Follow-ups', _showFollowups, () => setState(() => _showFollowups = !_showFollowups)),
+              if (_showFollowups) ...[
+                const SizedBox(height: 10),
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('jobs_followups').orderBy('timestamp', descending: true).limit(_followupsLimit).snapshots(),
+                  builder: (context, snap) {
+                    if (!snap.hasData) return const SizedBox.shrink();
+                    var docs = snap.data!.docs.where((d) {
+                      final m = d.data() as Map<String, dynamic>;
+                      return _matchesClientFilter(m);
+                    }).toList();
+                    if (docs.isEmpty) return Card(child: const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No follow-ups yet.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
+                    return Column(
+                      children: docs.map((d) {
+                        final m = d.data() as Map<String, dynamic>;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+                          child: ListTile(
+                            onTap: () => _showFollowupDetail(m),
+                            leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.reply_outlined, color: Color(0xFFF59E0B), size: 16)),
+                            title: Text((m['company'] ?? 'Unknown').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
+                            subtitle: Text((m['email'] ?? '').toString(), style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                            trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ],
+              const SizedBox(height: 20),
+              const Text('Manual Queue', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+              const SizedBox(height: 4),
+              const Text('Long-press an item to Retry or Delete.', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+              const SizedBox(height: 10),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(),
+                builder: (context, snap) {
+                  if (!snap.hasData) return const SizedBox.shrink();
+                  var docs = snap.data!.docs.where((d) {
+                    final m = d.data() as Map<String, dynamic>;
+                    return _matchesManualFilter(m);
+                  }).toList();
+                  if (docs.isEmpty) return Card(child: const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No manual requests.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
+                  return Column(
+                    children: docs.map((d) {
+                      final m = d.data() as Map<String, dynamic>;
+                      final st = (m['status'] ?? 'pending').toString();
+                      final skillLabel = (m['job_type'] ?? m['skill'] ?? '').toString();
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+                        child: ListTile(
+                          onLongPress: () => _showManualActions(d.id, (m['company'] ?? '').toString(), st),
+                          leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: _manualStatusColor(st).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.schedule, color: _manualStatusColor(st), size: 16)),
+                          title: Text((m['company'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
+                          subtitle: Text('${m['email'] ?? ''} - ${_manualStatusLabel(st)}${skillLabel.isNotEmpty ? ' - $skillLabel' : ''}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                          trailing: const Icon(Icons.more_horiz, size: 16, color: Color(0xFF6B7280)),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
