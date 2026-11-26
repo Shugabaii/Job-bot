@@ -1934,7 +1934,7 @@ class _DashboardState extends State<Dashboard> {
               children: [
                 Text('CareerPilot AI', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
                 SizedBox(height: 1),
-                Text("Habeeb Armaya'u - Software Engineer", style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                Text("Habeeb Armaya'u - Software Engineer", style: TextStyle(fontSize: 9, color: Color(0xFF9CA3AF))),
               ],
             ),
           ],
