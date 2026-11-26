@@ -365,7 +365,7 @@ class _DashboardState extends State<Dashboard> {
   }
 
   Future<void> _exportAllEmailsPdf() async {
-    final snap = await FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(100).get();
+    final snap = await FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).get();
     final docs = snap.docs.where((d) => _matchesClientFilter(d.data())).toList();
     final doc = pw.Document();
     doc.addPage(
@@ -1997,7 +1997,7 @@ class _DashboardState extends State<Dashboard> {
                   final lastCompany = (rawCompany.isEmpty || rawCompany.startsWith('Waiting ')) ? 'Waiting' : rawCompany;
                   final lastRun = (data?['last_run'] ?? 'No recent activity').toString();
                   return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(100).snapshots(),
+                    stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).snapshots(),
                     builder: (context, sentSnap) {
                       final allDocs = sentSnap.data?.docs ?? [];
                       final filtered = allDocs.where((d) {
