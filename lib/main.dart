@@ -1301,7 +1301,7 @@ class _DashboardState extends State<Dashboard> {
       backgroundColor: const Color(0xFF111827),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        return FutureBuilder>(
+        return FutureBuilder(
           future: _fetchMergedDetail(j),
           builder: (ctx, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
