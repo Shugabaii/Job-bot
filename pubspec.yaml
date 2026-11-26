@@ -1,7 +1,7 @@
 name: careerpilot_ai
 description: "CareerPilot AI - Professional Outreach Dashboard"
 publish_to: 'none'
-version: 4.3.0+7
+version: 4.4.0+8
 
 environment:
   sdk: ^3.9.0
@@ -13,6 +13,9 @@ dependencies:
   firebase_core: ^3.8.0
   cloud_firestore: ^5.4.0
   url_launcher: ^6.3.0
+  pdf: ^3.11.0
+  printing: ^5.14.0
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:
