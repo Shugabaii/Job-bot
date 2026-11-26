@@ -70,6 +70,12 @@ class _DashboardState extends State<Dashboard> {
   List<Map<String, dynamic>> _clientsCache = [];
   static const String _hfSpaceUrl = 'https://iharmayau-habeeb-job-bot.hf.space/';
 
+  // V78: Your real profile - used everywhere instead of blank "user"
+  static const String _ownerId = 'user';
+  static const String _ownerName = 'Habibu Armayau Isah';
+  static const String _ownerSkill = 'Flutter + AI';
+  static const String _ownerType = 'freelancer';
+
   static const List<String> _recruiterWords = [
     'recruitment', 'recruiting', 'recruiter', 'staffing', 'headhunter',
     'executive search', 'talent agency', 'talent acquisition',
@@ -108,10 +114,42 @@ class _DashboardState extends State<Dashboard> {
     return _skillDisplay(rawSkill);
   }
 
+  // V78: Display name - never show blank or "user"
+  String _displayNameForClient(Map<String, dynamic> c) {
+    final id = (c['id'] ?? '').toString();
+    final raw = (c['name'] ?? '').toString().trim();
+    if (raw.isNotEmpty) return raw;
+    if (id == _ownerId) return _ownerName;
+    return 'Unnamed Client';
+  }
+
+  String _displaySkillForClient(Map<String, dynamic> c) {
+    final id = (c['id'] ?? '').toString();
+    final raw = (c['job_wanted'] ?? c['job'] ?? c['skill'] ?? '').toString().trim();
+    if (raw.isNotEmpty) return raw;
+    if (id == _ownerId) return _ownerSkill;
+    return '';
+  }
+
+  String _displayTypeForClient(Map<String, dynamic> c) {
+    final raw = (c['client_type'] ?? '').toString().trim();
+    if (raw.isNotEmpty) return raw;
+    if ((c['id'] ?? '').toString() == _ownerId) return _ownerType;
+    return 'freelancer';
+  }
+
+  String _activeClientDisplayName() {
+    if (_activeClientId == _ownerId) return _ownerName;
+    final m = _clientsCache.where((c) => (c['id'] ?? '').toString() == _activeClientId).toList();
+    if (m.isNotEmpty) return _displayNameForClient(m.first);
+    return _activeClientId;
+  }
+
   @override
   void initState() {
     super.initState();
     _loadActiveClient();
+    _ensureDefaultUserProfile();
   }
 
   Future<void> _loadActiveClient() async {
@@ -124,9 +162,52 @@ class _DashboardState extends State<Dashboard> {
     } catch (_) {}
   }
 
-  // ================= V75 FIX - DASHBOARD 100 CAP =================
-  // OLD: .limit(100) + total = docs.length -> stuck at 100
-  // NEW: count() aggregation -> counts ALL docs, no limit
+  // V78: Create your profile once, if it does not exist - so Clients never shows blank
+  Future<void> _ensureDefaultUserProfile() async {
+    try {
+      final ref = FirebaseFirestore.instance.collection('clients').doc(_ownerId);
+      final doc = await ref.get();
+      if (!doc.exists) {
+        await ref.set({
+          'name': _ownerName,
+          'client_type': _ownerType,
+          'skill': _ownerSkill,
+          'job_wanted': '',
+          'job': '',
+          'location': 'Lagos, Nigeria',
+          'place': 'Lagos, Nigeria / Global',
+          'email': '',
+          'phone': '',
+          'cv_url': '',
+          'cvUrl': '',
+          'cvLink': '',
+          'gmail_connected': false,
+          'is_paused': false,
+          'status': 'active',
+          'max_per_day': 20,
+          'is_owner': true,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      } else {
+        final d = doc.data() ?? {};
+        // Fix old blank profile - if name is empty, repair it
+        if ((d['name'] ?? '').toString().trim().isEmpty) {
+          await ref.set({
+            'name': _ownerName,
+            'client_type': _ownerType,
+            'skill': _ownerSkill,
+            'location': d['location'] ?? 'Lagos, Nigeria',
+            'place': d['place'] ?? 'Lagos, Nigeria / Global',
+          }, SetOptions(merge: true));
+        }
+        // If type is missing, force freelancer for owner
+        if ((d['client_type'] ?? '').toString().trim().isEmpty) {
+          await ref.set({'client_type': _ownerType}, SetOptions(merge: true));
+        }
+      }
+    } catch (_) {}
+  }
+
   Future<Map<String, int>> _fetchDashboardCounts() async {
     final db = FirebaseFirestore.instance;
     int totalAll = 0;
@@ -142,7 +223,6 @@ class _DashboardState extends State<Dashboard> {
         totalAll = s.docs.length;
       } catch (_) {}
     }
-    // V76 ARCHIVE: Total = All - Archived, so archived emails do not count
     try {
       final archAgg = await db.collection('jobs_sent').where('archived', isEqualTo: true).count().get();
       archivedCount = archAgg.count ?? 0;
@@ -161,7 +241,6 @@ class _DashboardState extends State<Dashboard> {
         final snap = await db.collection('jobs_sent').where('timestamp', isGreaterThanOrEqualTo: start.toIso8601String()).count().get();
         todayAll = snap.count ?? 0;
       }
-      // Subtract archived today if any - best effort, keep it simple
       todayCount = todayAll - todayArchived;
       if (todayCount < 0) todayCount = 0;
     } catch (_) {}
@@ -194,8 +273,14 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 
-  // ================= V76 ARCHIVE - PROFESSIONAL DELETE =================
-  // Archive = hide from dashboard, keep in Firebase for records, bot will NOT resend
+  Future<int> _fetchFilteredToday() async {
+    if (_selectedClientFilter == 'All') {
+      final m = await _fetchDashboardCounts();
+      return m['today'] ?? 0;
+    }
+    return 0;
+  }
+
   bool _isArchived(Map<String, dynamic> m) {
     if (m['archived'] == true) return true;
     final s = (m['status'] ?? '').toString().toLowerCase();
@@ -225,7 +310,6 @@ class _DashboardState extends State<Dashboard> {
         'status': 'archived',
         'archived_at': DateTime.now().toIso8601String(),
       }, SetOptions(merge: true));
-      // Also mark in details so bot history stays consistent
       try {
         final email = (data['email'] ?? '').toString();
         if (company.isNotEmpty && email.isNotEmpty) {
@@ -336,7 +420,12 @@ class _DashboardState extends State<Dashboard> {
     return s;
   }
 
-  String _clientDisplayName(Map<String, dynamic> j) => (j['name'] ?? j['client_name'] ?? 'Unknown').toString();
+  String _clientDisplayName(Map<String, dynamic> j) {
+    final raw = (j['name'] ?? j['client_name'] ?? '').toString().trim();
+    if (raw.isNotEmpty) return raw;
+    if ((j['client_id'] ?? '').toString() == _ownerId) return _ownerName;
+    return 'Unknown';
+  }
 
   String _senderEmailForClient(Map<String, dynamic> c) {
     return (c['email'] ?? c['gmail'] ?? c['gmail_email'] ?? '').toString().trim();
@@ -375,7 +464,7 @@ class _DashboardState extends State<Dashboard> {
       }, SetOptions(merge: true));
       if (mounted) {
         setState(() => _activeClientId = clientId);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Active client updated to $clientId.'), backgroundColor: const Color(0xFF10B981)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Active client updated to ${_activeClientDisplayName()}.'), backgroundColor: const Color(0xFF10B981)));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
@@ -385,6 +474,7 @@ class _DashboardState extends State<Dashboard> {
   Future<void> _useMeHabibu() async {
     try {
       await FirebaseFirestore.instance.collection('bot_config').doc('active').delete();
+      await _ensureDefaultUserProfile();
       if (mounted) {
         setState(() => _activeClientId = 'user');
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Active client cleared. Using your profile - Habibu Armayau Isah.'), backgroundColor: Color(0xFF10B981)));
@@ -480,7 +570,10 @@ class _DashboardState extends State<Dashboard> {
   }
 
   Future<void> _deleteClient(String clientId, String name) async {
-    if (clientId == 'user') return;
+    if (clientId == 'user') {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You cannot delete your own profile. Use Pause instead.'), backgroundColor: Colors.orange));
+      return;
+    }
     final confirmCtrl = TextEditingController();
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF111827),
@@ -694,6 +787,28 @@ class _DashboardState extends State<Dashboard> {
       builder: (context, snap) {
         final docs = snap.data?.docs ?? [];
         final clients = docs.map((d) { final m = d.data() as Map<String, dynamic>; m['id'] = d.id; return m; }).toList();
+        // V78: If owner doc is missing in snapshot (first run), show virtual owner card so it never looks blank
+        final hasOwner = clients.any((c) => (c['id'] ?? '').toString() == _ownerId);
+        if (!hasOwner) {
+          clients.insert(0, {
+            'id': _ownerId,
+            'name': _ownerName,
+            'client_type': _ownerType,
+            'skill': _ownerSkill,
+            'job_wanted': '',
+            'job': '',
+            'location': 'Lagos, Nigeria',
+            'place': 'Lagos, Nigeria / Global',
+            'email': '',
+            'phone': '',
+            'cv_url': '',
+            'gmail_connected': false,
+            'is_paused': false,
+            'status': 'active',
+            'max_per_day': 20,
+            'is_owner': true,
+          });
+        }
         _clientsCache = clients;
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -711,13 +826,14 @@ class _DashboardState extends State<Dashboard> {
           ]))),
           ...clients.map((c) {
             final id = (c['id'] ?? '').toString();
-            final name = (c['name'] ?? '').toString();
-            final type = (c['client_type'] ?? 'freelancer').toString();
-            final job = (c['job_wanted'] ?? c['job'] ?? c['skill'] ?? '').toString();
+            final name = _displayNameForClient(c);
+            final type = _displayTypeForClient(c);
+            final job = _displaySkillForClient(c);
             final loc = (c['location'] ?? c['place'] ?? '').toString();
             final gmailOk = c['gmail_connected'] == true;
             final isPaused = c['is_paused'] == true || (c['status'] ?? '').toString().toLowerCase() == 'paused';
             final isActive = id == _activeClientId;
+            final isOwner = id == _ownerId;
             final maxPerDay = c['max_per_day'] ?? 10;
             final cvLink = (c['cv_url'] ?? c['cvUrl'] ?? c['cvLink'] ?? '').toString();
             final hasCv = cvLink.isNotEmpty;
@@ -730,12 +846,15 @@ class _DashboardState extends State<Dashboard> {
                   Container(width: 36, height: 36, decoration: BoxDecoration(color: (type == 'job_seeker' ? const Color(0xFF3B82F6) : const Color(0xFF10B981)).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: Icon(type == 'job_seeker' ? Icons.work_outline : Icons.code_outlined, size: 16, color: type == 'job_seeker' ? const Color(0xFF60A5FA) : const Color(0xFF34D399))),
                   const SizedBox(width: 10),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+                    Row(children: [
+                      Flexible(child: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      if (isOwner) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)), child: const Text('YOU', style: TextStyle(color: Color(0xFF34D399), fontSize: 9, fontWeight: FontWeight.bold))),
+                    ]),
                     Text('${type == 'job_seeker' ? 'Job Seeker' : 'Freelancer'} - $job - $loc', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                   ])),
                   if (isActive) Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: const Text('ACTIVE', style: TextStyle(color: Color(0xFF34D399), fontSize: 9, fontWeight: FontWeight.bold))),
                   if (isPaused) Container(margin: const EdgeInsets.only(left: 4), padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF7F1D1D), borderRadius: BorderRadius.circular(6)), child: const Text('PAUSED', style: TextStyle(color: Color(0xFFFCA5A5), fontSize: 9, fontWeight: FontWeight.bold))),
-                  IconButton(icon: const Icon(Icons.delete_outline, size: 18, color: Color(0xFF9CA3AF)), onPressed: () => _deleteClient(id, name)),
+                  if (!isOwner) IconButton(icon: const Icon(Icons.delete_outline, size: 18, color: Color(0xFF9CA3AF)), onPressed: () => _deleteClient(id, name)),
                 ]),
                 const SizedBox(height: 8),
                 Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), decoration: BoxDecoration(color: const Color(0xFF090D16), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF1F2937))), child: Text(senderEmail.isNotEmpty ? 'Sending from: $senderEmail' : 'Sending from: Not configured - add the client Gmail address', style: TextStyle(color: senderEmail.isNotEmpty ? Colors.white : const Color(0xFFF59E0B), fontSize: 11, fontWeight: FontWeight.w600))),
@@ -914,7 +1033,7 @@ class _DashboardState extends State<Dashboard> {
         const SizedBox(height: 10),
         _clientTextField(emailCtrl, 'Email (optional - bot will find if empty)'),
         const SizedBox(height: 10),
-        DropdownButtonFormField<String>(value: _clientsCache.any((c) => (c['id'] ?? '') == selectedClient) ? selectedClient : null, decoration: InputDecoration(filled: true, fillColor: const Color(0xFF090D16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)), dropdownColor: const Color(0xFF111827), style: const TextStyle(color: Colors.white), hint: const Text('Select Client', style: TextStyle(color: Color(0xFF6B7280))), items: _clientsCache.map((c) => DropdownMenuItem<String>(value: (c['id'] ?? '').toString(), child: Text('${c['name']} (${c['client_type']})', style: const TextStyle(color: Colors.white)))).toList(), onChanged: (v) => setSB(() => selectedClient = v ?? _activeClientId)),
+        DropdownButtonFormField<String>(value: _clientsCache.any((c) => (c['id'] ?? '') == selectedClient) ? selectedClient : null, decoration: InputDecoration(filled: true, fillColor: const Color(0xFF090D16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)), dropdownColor: const Color(0xFF111827), style: const TextStyle(color: Colors.white), hint: const Text('Select Client', style: TextStyle(color: Color(0xFF6B7280))), items: _clientsCache.map((c) => DropdownMenuItem<String>(value: (c['id'] ?? '').toString(), child: Text('${_displayNameForClient(c)} (${_displayTypeForClient(c)})', style: const TextStyle(color: Colors.white)))).toList(), onChanged: (v) => setSB(() => selectedClient = v ?? _activeClientId)),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(value: jobType, decoration: InputDecoration(filled: true, fillColor: const Color(0xFF090D16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)), dropdownColor: const Color(0xFF111827), style: const TextStyle(color: Colors.white), items: jobTypes.map((j) => DropdownMenuItem(value: j, child: Text(j == 'CUSTOM' ? 'Other / Custom Skill' : j, style: const TextStyle(color: Colors.white)))).toList(), onChanged: (v) => setSB(() => jobType = v ?? 'FLUTTER')),
         if (jobType == 'CUSTOM') ...[
@@ -937,11 +1056,11 @@ class _DashboardState extends State<Dashboard> {
           }
           final selClient = _clientsCache.where((c) => (c['id'] ?? '').toString() == selectedClient).toList();
           if (selClient.isNotEmpty && selClient.first['gmail_connected'] != true) {
-            final proceed2 = await showDialog<bool>(context: context, builder: (dCtx) => AlertDialog(backgroundColor: const Color(0xFF111827), title: const Text('Gmail Not Connected', style: TextStyle(color: Colors.white)), content: Text('${selClient.first['name']} has not connected Gmail.\n\nSending for this client will remain paused until Gmail is connected. No other account will be used.\n\nQueue anyway? It will be recorded as not sent - Gmail required.', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)), actions: [TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancel')), TextButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('Queue Anyway', style: TextStyle(color: Colors.orange)))]));
+            final proceed2 = await showDialog<bool>(context: context, builder: (dCtx) => AlertDialog(backgroundColor: const Color(0xFF111827), title: const Text('Gmail Not Connected', style: TextStyle(color: Colors.white)), content: Text('${_displayNameForClient(selClient.first)} has not connected Gmail.\n\nSending for this client will remain paused until Gmail is connected. No other account will be used.\n\nQueue anyway? It will be recorded as not sent - Gmail required.', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)), actions: [TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancel')), TextButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('Queue Anyway', style: TextStyle(color: Colors.orange)))]));
             if (proceed2 != true) return;
           }
           try {
-            final clientName = selClient.isNotEmpty ? (selClient.first['name'] ?? '').toString() : '';
+            final clientName = selClient.isNotEmpty ? _displayNameForClient(selClient.first) : '';
             await FirebaseFirestore.instance.collection('pending_jobs').add({'company': company, 'email': emailCtrl.text.trim(), 'job_type': finalSkill, 'skill': finalSkill, 'custom_skill': jobType == 'CUSTOM', 'client_id': selectedClient, 'client_name': clientName, 'status': 'pending', 'created_at': DateTime.now().toIso8601String(), 'timestamp': DateTime.now().toIso8601String()});
             if (context.mounted) { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Manual request queued for $finalSkill. The bot will process it shortly.'), backgroundColor: Color(0xFF10B981))); }
           } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red)); }
@@ -1072,6 +1191,44 @@ class _DashboardState extends State<Dashboard> {
     return Row(children: [Expanded(child: Text(title, style: const TextStyle(fontSize: 13, color: Colors.white))), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: Text(status, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34D399))))]);
   }
 
+  Widget _botStatusCard() {
+    return FutureBuilder<Map<String, int>>(
+      future: _fetchDashboardCounts(),
+      builder: (context, countSnap) {
+        final sentTodayFromFirestore = countSnap.data?['today'] ?? 0;
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('bot_status').doc('current').snapshots(),
+          builder: (context, snap) {
+            final data = snap.data?.data() as Map<String, dynamic>?;
+            final rawCompany = (data?['last_company'] ?? '').toString().trim();
+            final lastCompany = (rawCompany.isEmpty || rawCompany.startsWith('Waiting ')) ? 'Waiting' : rawCompany;
+            final lastRun = (data?['last_run'] ?? 'No recent activity').toString();
+            return Container(
+              decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1F2937))),
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.bolt, size: 16, color: Color(0xFF10B981))), const SizedBox(width: 10), const Text('Bot Status', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)), const Spacer(), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: const Text('LIVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF34D399))))]),
+                  const SizedBox(height: 18),
+                  Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$sentTodayFromFirestore', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)), const SizedBox(height: 2), const Text('Sent Today', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))]))]),
+                  const SizedBox(height: 12),
+                  Text('Last: $lastCompany', style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                  Text(lastRun, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                  const SizedBox(height: 12),
+                  _systemRow('Bot', 'Online'),
+                  const SizedBox(height: 8),
+                  _systemRow('Gmail', 'Connected'),
+                  const SizedBox(height: 8),
+                  _systemRow('Active Client', _activeClientDisplayName()),
+                ]),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1088,24 +1245,7 @@ class _DashboardState extends State<Dashboard> {
       body: RefreshIndicator(onRefresh: () async { setState(() {}); }, color: const Color(0xFF10B981), backgroundColor: const Color(0xFF111827), child: SingleChildScrollView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Overview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.3)), SizedBox(height: 2), Text('Your applications and email activity', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)))]), Row(children: [IconButton(onPressed: _showBotSettingsDialog, icon: const Icon(Icons.settings, size: 18, color: Color(0xFF9CA3AF)), style: IconButton.styleFrom(backgroundColor: const Color(0xFF111827), side: const BorderSide(color: Color(0xFF1F2937)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))), const SizedBox(width: 8), IconButton(onPressed: () => setState(() {}), icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF9CA3AF)), style: IconButton.styleFrom(backgroundColor: const Color(0xFF111827), side: const BorderSide(color: Color(0xFF1F2937)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))))])]),
         const SizedBox(height: 20),
-        StreamBuilder<DocumentSnapshot>(stream: FirebaseFirestore.instance.collection('bot_status').doc('current').snapshots(), builder: (context, snap) {
-          final data = snap.data?.data() as Map<String, dynamic>?; final sentToday = data?['sent_today'] ?? 0;
-          final rawCompany = (data?['last_company'] ?? '').toString().trim(); final lastCompany = (rawCompany.isEmpty || rawCompany.startsWith('Waiting ')) ? 'Waiting' : rawCompany; final lastRun = (data?['last_run'] ?? 'No recent activity').toString();
-          return Container(decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1F2937))), child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.bolt, size: 16, color: Color(0xFF10B981))), const SizedBox(width: 10), const Text('Bot Status', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)), const Spacer(), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: const Text('LIVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF34D399))))]),
-            const SizedBox(height: 18),
-            Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$sentToday', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)), const SizedBox(height: 2), const Text('Sent Today', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))]))]),
-            const SizedBox(height: 12),
-            Text('Last: $lastCompany', style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
-            Text(lastRun, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
-            const SizedBox(height: 12),
-            _systemRow('Bot', 'Online'),
-            const SizedBox(height: 8),
-            _systemRow('Gmail', 'Connected'),
-            const SizedBox(height: 8),
-            _systemRow('Active Client', _activeClientId),
-          ])));
-        }),
+        _botStatusCard(),
         const SizedBox(height: 16),
         FutureBuilder<Map<String, int>>(
           future: _selectedClientFilter == 'All' ? _fetchDashboardCounts() : Future.value({'total': 0, 'today': 0}),
@@ -1173,7 +1313,7 @@ class _DashboardState extends State<Dashboard> {
                   isExpanded: true,
                   items: [
                     const DropdownMenuItem(value: 'All', child: Text('All Clients')),
-                    ..._clientsCache.map((c) => DropdownMenuItem(value: (c['id'] ?? '').toString(), child: Text((c['name'] ?? '').toString()))),
+                    ..._clientsCache.map((c) => DropdownMenuItem(value: (c['id'] ?? '').toString(), child: Text(_displayNameForClient(c)))),
                   ],
                   onChanged: (v) => setState(() => _selectedClientFilter = v ?? 'All'),
                 ),
@@ -1220,7 +1360,6 @@ class _DashboardState extends State<Dashboard> {
             var docs = snap.data!.docs.where((d) {
               final m = d.data() as Map<String, dynamic>;
               if (!_matchesClientFilter(m)) return false;
-              // V76: Hide archived unless Show Archived is on
               final isArch = _isArchived(m);
               if (!_showArchived && isArch) return false;
               if (_showArchived && !isArch) return false;
