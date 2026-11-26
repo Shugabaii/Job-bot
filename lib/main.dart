@@ -81,14 +81,12 @@ class _DashboardState extends State<Dashboard> {
     return _recruiterWords.any((w) => c.contains(w));
   }
 
-  // NEW: Normalize any custom skill - Video Editing -> VIDEO EDITING, keeps it clean for bot.py
   String _normalizeSkill(String raw) {
     final s = raw.trim();
     if (s.isEmpty) return 'FLUTTER';
     return s.toUpperCase();
   }
 
-  // FIX 1: Human readable skill - VIDEO EDITING -> Video Editing, FLUTTER -> Flutter
   String _skillDisplay(String raw) {
     final s = raw.trim();
     if (s.isEmpty) return 'Flutter';
@@ -96,11 +94,9 @@ class _DashboardState extends State<Dashboard> {
     if (s.toUpperCase() == 'BACKEND') return 'Backend';
     if (s.toUpperCase() == 'AI' || s.toUpperCase() == 'LLM') return 'AI';
     if (s.toUpperCase() == 'FULLSTACK') return 'Full-Stack';
-    // Title case for custom: VIDEO EDITING -> Video Editing
     return s.toLowerCase().split(' ').map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1)).join(' ');
   }
 
-  // FIX 1: Role line for ANY skill - not hardcoded Flutter
   String _roleLineForSkill(String rawSkill) {
     final s = rawSkill.trim().toUpperCase();
     if (s == 'FLUTTER') return 'Flutter + AI mobile apps';
@@ -108,7 +104,6 @@ class _DashboardState extends State<Dashboard> {
     if (s == 'AI' || s == 'LLM') return 'AI features, LLM apps and automation';
     if (s == 'FULLSTACK') return 'full-stack web and mobile apps';
     if (s.isEmpty) return 'Flutter + AI mobile apps';
-    // Custom: Video Editing, Welding, Graphic Design, etc.
     return _skillDisplay(rawSkill);
   }
 
@@ -126,6 +121,66 @@ class _DashboardState extends State<Dashboard> {
         if (mounted) setState(() => _activeClientId = (d['active_client_id'] ?? d['client_id'] ?? 'user').toString());
       }
     } catch (_) {}
+  }
+
+  // ================= V75 FIX - DASHBOARD 100 CAP =================
+  // OLD: .limit(100) + total = docs.length -> stuck at 100 forever
+  // NEW: count() aggregation -> counts ALL docs, no limit, works for 1000+
+  Future<Map<String, int>> _fetchDashboardCounts() async {
+    final db = FirebaseFirestore.instance;
+    int total = 0;
+    int todayCount = 0;
+    try {
+      final totalAgg = await db.collection('jobs_sent').count().get();
+      total = totalAgg.count ?? 0;
+    } catch (_) {
+      try {
+        final s = await db.collection('jobs_sent').get();
+        total = s.docs.length;
+      } catch (_) {}
+    }
+    try {
+      final now = DateTime.now();
+      final dayKey = _dayKey(now);
+      final todayAgg = await db.collection('jobs_sent').where('date', isEqualTo: dayKey).count().get();
+      todayCount = todayAgg.count ?? 0;
+      if (todayCount == 0) {
+        final start = DateTime(now.year, now.month, now.day);
+        final snap = await db.collection('jobs_sent').where('timestamp', isGreaterThanOrEqualTo: start.toIso8601String()).count().get();
+        todayCount = snap.count ?? 0;
+      }
+    } catch (_) {}
+    // If client filter is not All, we still return global total for header.
+    // The filtered total is handled in build() via graph docs if needed.
+    // For now return global - this is what user wants: real total, not 100 cap.
+    return {'total': total, 'today': todayCount};
+  }
+
+  // V75: Count for a specific client filter (when filter != All)
+  Future<int> _fetchFilteredTotal() async {
+    if (_selectedClientFilter == 'All') {
+      final m = await _fetchDashboardCounts();
+      return m['total'] ?? 0;
+    }
+    // For filtered view, count by client_name / client_id via query - still no 100 cap
+    try {
+      final db = FirebaseFirestore.instance;
+      final f = _selectedClientFilter.toLowerCase();
+      final match = _clientsCache.where((c) => (c['id'] ?? '').toString().toLowerCase() == f).toList();
+      final name = match.isNotEmpty ? (match.first['name'] ?? '').toString() : f;
+      int c1 = 0, c2 = 0;
+      try {
+        final a1 = await db.collection('jobs_sent').where('client_name', isEqualTo: name).count().get();
+        c1 = a1.count ?? 0;
+      } catch (_) {}
+      try {
+        final a2 = await db.collection('jobs_sent').where('client_id', isEqualTo: f).count().get();
+        c2 = a2.count ?? 0;
+      } catch (_) {}
+      return c1 > c2 ? c1 : c2;
+    } catch (_) {
+      return 0;
+    }
   }
 
   String _cleanPhone(dynamic raw) {
@@ -206,7 +261,6 @@ class _DashboardState extends State<Dashboard> {
     return cn == name || cid == f || cn == f;
   }
 
-  // FIX 2 helper: Manual jobs store client_id, not client_name, so match both
   bool _matchesManualFilter(Map<String, dynamic> j) {
     if (_selectedClientFilter == 'All') return true;
     final cid = (j['client_id'] ?? '').toString().toLowerCase();
@@ -642,7 +696,6 @@ class _DashboardState extends State<Dashboard> {
 
   Widget _detailRow(String label, String value) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 70, child: Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w600))), Expanded(child: SelectableText(value, style: const TextStyle(fontSize: 12, color: Colors.white)))]);
 
-  // FIX 1: _buildEmailBody now uses real skill, not hardcoded Flutter
   String _buildEmailBody(Map<String, dynamic> j) {
     final saved = (j['email_body'] ?? j['message'] ?? j['body'] ?? j['email_text'] ?? '').toString().trim();
     if (saved.isNotEmpty) return saved;
@@ -655,14 +708,12 @@ class _DashboardState extends State<Dashboard> {
       final job = (j['job_wanted'] ?? j['job'] ?? jobType).toString();
       return "Dear Hiring Manager at $company,\n\nMy name is $clientName. I am applying for the $job position at $company.\n\n${why.isNotEmpty ? why : 'I saw $company is hiring and I am interested in the $job role. I am available immediately.'}\n\nI have attached my CV for your review. I would be grateful for an opportunity to discuss how I can contribute to your team.\n\nThank you for your time.\n\nKind regards,\n$clientName\n$job";
     }
-    // Freelancer - use actual skill
     final skillDisp = _skillDisplay(jobType);
     final roleLine = _roleLineForSkill(jobType);
     final whyLine = why.isNotEmpty ? why : "I came across $company and liked what you're building - I help teams with $skillDisp, and I can support your team with that.";
     return "Hi $company Team,\n\n$whyLine\n\nI'm Habeeb Armaya'u, a Software Engineer. I help teams with $roleLine, dashboards and automation for teams building that kind of product.\n\nI would love to help $company ship faster - whether it's $skillDisp, a mobile app, dashboard, or internal tool.\n\nWould you be open to a quick 10-minute call this week to see if I can help?\n\nBest regards,\nHabeeb Armaya'u\nSoftware Engineer\n$skillDisp Developer";
   }
 
-  // FIX 1: _buildSubject now uses real skill
   String _buildSubject(Map<String, dynamic> j) {
     final saved = (j['subject'] ?? j['email_subject'] ?? '').toString().trim();
     if (saved.isNotEmpty) return saved;
@@ -799,7 +850,6 @@ class _DashboardState extends State<Dashboard> {
             if (proceed2 != true) return;
           }
           try {
-            // FIX: Also save client_name so filter works even if bot overwrites client_id
             final clientName = selClient.isNotEmpty ? (selClient.first['name'] ?? '').toString() : '';
             await FirebaseFirestore.instance.collection('pending_jobs').add({'company': company, 'email': emailCtrl.text.trim(), 'job_type': finalSkill, 'skill': finalSkill, 'custom_skill': jobType == 'CUSTOM', 'client_id': selectedClient, 'client_name': clientName, 'status': 'pending', 'created_at': DateTime.now().toIso8601String(), 'timestamp': DateTime.now().toIso8601String()});
             if (context.mounted) { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Manual request queued for $finalSkill. The bot will process it shortly.'), backgroundColor: Color(0xFF10B981))); }
@@ -860,7 +910,6 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 
-  // FIX 3: Retry / Delete Manual job
   Future<void> _showManualActions(String docId, String company, String status) async {
     final action = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF111827),
@@ -967,16 +1016,46 @@ class _DashboardState extends State<Dashboard> {
           ])));
         }),
         const SizedBox(height: 16),
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(100).snapshots(),
-          builder: (context, snap) {
-            final allDocs = snap.data?.docs ?? [];
-            final filtered = allDocs.where((d) { final m = d.data() as Map<String, dynamic>; return _matchesClientFilter(m); }).toList();
-            final totalSent = filtered.length;
+        // ===== V75 FIX: Total Sent via count(), NOT .limit(100) + docs.length =====
+        FutureBuilder<Map<String, int>>(
+          future: _selectedClientFilter == 'All' ? _fetchDashboardCounts() : Future.value({'total': 0, 'today': 0}),
+          builder: (context, countSnap) {
+            // For All filter, use count(). For specific client, use filtered count via FutureBuilder below
+            if (_selectedClientFilter != 'All') {
+              return FutureBuilder<int>(
+                future: _fetchFilteredTotal(),
+                builder: (context, fSnap) {
+                  final totalSent = fSnap.data ?? 0;
+                  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('jobs_sent').where('timestamp', isGreaterThanOrEqualTo: DateTime.now().subtract(const Duration(days: 7)).toIso8601String()).snapshots(),
+                      builder: (context, snap) {
+                        final docs = snap.data?.docs ?? [];
+                        final filteredGraph = docs.where((d) { final m = d.data() as Map<String, dynamic>; return _matchesClientFilter(m); }).toList();
+                        return _buildGraph(filteredGraph);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Row(children: [_metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'), const SizedBox(width: 12), _metric('Today', '—', Icons.today_outlined, 'Sent today')]),
+                    const SizedBox(height: 12),
+                    _repliesMetrics(totalSent),
+                  ]);
+                },
+              );
+            }
+            final totalSent = countSnap.data?['total'] ?? 0;
+            final todaySent = countSnap.data?['today'] ?? 0;
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _buildGraph(filtered),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('jobs_sent').where('timestamp', isGreaterThanOrEqualTo: DateTime.now().subtract(const Duration(days: 7)).toIso8601String()).snapshots(),
+                builder: (context, snap) {
+                  final docs = snap.data?.docs ?? [];
+                  final filteredGraph = docs.where((d) { final m = d.data() as Map<String, dynamic>; return _matchesClientFilter(m); }).toList();
+                  return _buildGraph(filteredGraph);
+                },
+              ),
               const SizedBox(height: 12),
-              Row(children: [_metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'), const SizedBox(width: 12), _metric('Today', '${filtered.where((d) { final m = d.data() as Map<String, dynamic>; final dt = _parseDate(m['timestamp']); return dt != null && _dayKey(dt) == _dayKey(DateTime.now()); }).length}', Icons.today_outlined, 'Sent today')]),
+              Row(children: [_metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'), const SizedBox(width: 12), _metric('Today', '$todaySent', Icons.today_outlined, 'Sent today')]),
               const SizedBox(height: 12),
               _repliesMetrics(totalSent),
             ]);
@@ -1102,7 +1181,6 @@ class _DashboardState extends State<Dashboard> {
           stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(),
           builder: (context, snap) {
             if (!snap.hasData) return const SizedBox.shrink();
-            // FIX 2: Filter by selected client
             var docs = snap.data!.docs.where((d) { final m = d.data() as Map<String, dynamic>; return _matchesManualFilter(m); }).toList();
             if (docs.isEmpty) return Card(child: const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No manual requests.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
             return Column(children: docs.map((d) {
