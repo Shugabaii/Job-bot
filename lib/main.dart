@@ -71,7 +71,7 @@ class _DashboardState extends State<Dashboard> {
   String _recentEmailFilter = 'All';
   String _selectedClientFilter = 'All';
   String _activeClientId = 'user';
-  List> _clientsCache = [];
+  var _clientsCache = [];
   static const String _hfSpaceUrl = 'https://iharmayau-habeeb-job-bot.hf.space/';
   static const List<String> _recruiterWords = [
     'recruitment', 'recruiting', 'recruiter', 'staffing', 'headhunter',
