@@ -21,8 +21,20 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# FIX for: decodeLazy isn't defined for ZLibDecoder
+# This forces the versions that work together
+dependency_overrides:
+  archive: 4.0.7
+  image: 4.5.4
 
 flutter:
   uses-material-design: true
   assets:
     - assets/icon.png
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon.png"
