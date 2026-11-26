@@ -1223,7 +1223,7 @@ class _DashboardState extends State<Dashboard> {
     return "$skillDisp Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
-  Future> _fetchMergedDetail(Map<String, dynamic> j) async {
+  Future _fetchMergedDetail(Map j) async {
     final merged = Map<String, dynamic>.from(j);
     final hasBody = (merged['email_body'] ?? merged['body'] ?? '').toString().trim().isNotEmpty;
     final hasPhone = _cleanPhone(merged['phone']).isNotEmpty;
