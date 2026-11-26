@@ -1310,7 +1310,8 @@ class _DashboardState extends State<Dashboard> {
             final merged = snap.data ?? j;
             final company = (merged['company'] ?? 'Unknown').toString();
             final email = (merged['email'] ?? '').toString();
-            final phone = _cleanPhone(merged['phone']);
+            final clientPhonesHere = _clientsCache.map((c) => _cleanPhone(c['phone'])).where((p) => p.isNotEmpty).toSet();
+final phone = clientPhonesHere.contains(_cleanPhone(merged['phone'])) ? '' : _cleanPhone(merged['phone']);
             final jobType = (merged['job_type'] ?? 'FLUTTER').toString();
             final dateStr = _formatDate(merged['timestamp']);
             final subject = _buildSubject(merged);
