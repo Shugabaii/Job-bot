@@ -45,7 +45,7 @@ class CareerPilotApp extends StatelessWidget {
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Color(0xFF1F2937), width: 1),
+            side: const BorderSide(color: Color(0xFF1F2937), width: 1),
           ),
         ),
       ),
@@ -71,7 +71,7 @@ class _DashboardState extends State<Dashboard> {
   String _recentEmailFilter = 'All';
   String _selectedClientFilter = 'All';
   String _activeClientId = 'user';
-  List<Map<String, dynamic>> _clientsCache = [];
+  List> _clientsCache = [];
   static const String _hfSpaceUrl = 'https://iharmayau-habeeb-job-bot.hf.space/';
   static const List<String> _recruiterWords = [
     'recruitment', 'recruiting', 'recruiter', 'staffing', 'headhunter',
@@ -250,7 +250,6 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 
-  // FIX 1 - NEW: Edit Sender Email
   Future<void> _editSenderEmail(String clientId, String name, String currentEmail) async {
     final ctrl = TextEditingController(text: currentEmail);
     await showDialog(
@@ -285,14 +284,12 @@ class _DashboardState extends State<Dashboard> {
             onPressed: () async {
               final email = ctrl.text.trim();
               if (email.isEmpty || !email.contains('@')) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid email.'), backgroundColor: Colors.red));
+                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter a valid email.'), backgroundColor: Colors.red));
                 return;
               }
               await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'email': email, 'gmail': email, 'gmail_email': email}, SetOptions(merge: true));
-              if (context.mounted) {
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sender email saved for $name.'), backgroundColor: const Color(0xFF10B981)));
-              }
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sender email saved for $name.'), backgroundColor: const Color(0xFF10B981)));
             },
             child: const Text('Save', style: TextStyle(color: Colors.white)),
           ),
@@ -343,7 +340,7 @@ class _DashboardState extends State<Dashboard> {
                 pw.Text('Website: $website', style: const pw.TextStyle(fontSize: 12)),
                 pw.Text('Date Sent: ${date.isEmpty ? 'Unknown' : date}', style: const pw.TextStyle(fontSize: 12)),
                 pw.Text('Subject: $subject', style: const pw.TextStyle(fontSize: 12)),
-                pw.Text('Reply Status: $replyStatus', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                pw.Text('Reply Status: $replyStatus', style: const pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
                 if (clientName.isNotEmpty) pw.Text('Client: $clientName', style: const pw.TextStyle(fontSize: 12)),
                 if (sender.isNotEmpty) pw.Text('From: $sender', style: const pw.TextStyle(fontSize: 12)),
               ],
@@ -393,7 +390,7 @@ class _DashboardState extends State<Dashboard> {
               padding: const pw.EdgeInsets.all(12),
               decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(8)),
               child: pw.Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(company, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 4),
@@ -520,7 +517,7 @@ class _DashboardState extends State<Dashboard> {
           TextButton(
             onPressed: () async {
               await _copyText(link, 'Connect link');
-              if (context.mounted) Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Copy Link'),
           ),
@@ -528,7 +525,7 @@ class _DashboardState extends State<Dashboard> {
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
             onPressed: () async {
               await _copyText(message, 'Message');
-              if (context.mounted) Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Copy Message', style: TextStyle(color: Colors.white)),
           ),
@@ -570,7 +567,7 @@ class _DashboardState extends State<Dashboard> {
             TextButton(
               onPressed: () async {
                 await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'cv_url': '', 'cvUrl': '', 'cvLink': ''}, SetOptions(merge: true));
-                if (mounted) Navigator.pop(ctx);
+                if (ctx.mounted) Navigator.pop(ctx);
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CV link removed')));
               },
               child: const Text('Remove', style: TextStyle(color: Colors.red)),
@@ -586,7 +583,7 @@ class _DashboardState extends State<Dashboard> {
                 'cvLink': link,
                 'cv_uploaded_at': DateTime.now().toIso8601String(),
               }, SetOptions(merge: true));
-              if (mounted) Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('CV link saved for $name.'), backgroundColor: const Color(0xFF10B981)));
             },
             child: const Text('Save Link', style: TextStyle(color: Colors.white)),
@@ -690,17 +687,15 @@ class _DashboardState extends State<Dashboard> {
             onPressed: () async {
               final v = int.tryParse(ctrl.text.trim()) ?? 0;
               if (v < 1 || v > 50) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a value between 1 and 50.'), backgroundColor: Colors.red));
+                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter a value between 1 and 50.'), backgroundColor: Colors.red));
                 return;
               }
               try {
                 await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'max_per_day': v}, SetOptions(merge: true));
-                if (context.mounted) {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Daily limit for $name set to $v.'), backgroundColor: const Color(0xFF10B981)));
-                }
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Daily limit for $name set to $v.'), backgroundColor: const Color(0xFF10B981)));
               } catch (e) {
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
               }
             },
             child: const Text('Save'),
@@ -761,12 +756,10 @@ class _DashboardState extends State<Dashboard> {
                               'cycle_sleep_hours': int.tryParse(sleepCtrl.text.trim()) ?? 6,
                               'wait_between_minutes': int.tryParse(waitCtrl.text.trim()) ?? 15,
                             }, SetOptions(merge: true));
-                            if (context.mounted) {
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bot settings saved.'), backgroundColor: Color(0xFF10B981)));
-                            }
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bot settings saved.'), backgroundColor: Color(0xFF10B981)));
                           } catch (e) {
-                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
                           }
                         },
                         child: const Text('Save Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
@@ -852,11 +845,11 @@ class _DashboardState extends State<Dashboard> {
                         onPressed: () async {
                           final name = nameCtrl.text.trim();
                           if (name.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter the client name.'), backgroundColor: Colors.red));
+                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter the client name.'), backgroundColor: Colors.red));
                             return;
                           }
                           if (type == 'job_seeker' && (jobCtrl.text.trim().isEmpty || locCtrl.text.trim().isEmpty)) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Job seekers require a position and location.'), backgroundColor: Colors.red));
+                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Job seekers require a position and location.'), backgroundColor: Colors.red));
                             return;
                           }
                           final id = _clientSlug(name);
@@ -880,12 +873,10 @@ class _DashboardState extends State<Dashboard> {
                               'max_per_day': 10,
                               'created_at': DateTime.now().toIso8601String(),
                             }, SetOptions(merge: true));
-                            if (context.mounted) {
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Client $name added. Next: add the CV link and share the Gmail connect link.'), backgroundColor: const Color(0xFF10B981)));
-                            }
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Client $name added. Next: add the CV link and share the Gmail connect link.'), backgroundColor: const Color(0xFF10B981)));
                           } catch (e) {
-                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: Colors.red));
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: Colors.red));
                           }
                         },
                         child: const Text('Save Client', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
@@ -961,7 +952,8 @@ class _DashboardState extends State<Dashboard> {
       ),
     );
   }
-    Widget _clientsSection() {
+
+  Widget _clientsSection() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('clients').snapshots(),
       builder: (context, snap) {
@@ -1062,7 +1054,6 @@ class _DashboardState extends State<Dashboard> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      // FIX 1 - Sending from + Edit button
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1232,7 +1223,7 @@ class _DashboardState extends State<Dashboard> {
     return "$skillDisp Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
-  Future<Map<String, dynamic>> _fetchMergedDetail(Map<String, dynamic> j) async {
+  Future> _fetchMergedDetail(Map<String, dynamic> j) async {
     final merged = Map<String, dynamic>.from(j);
     final hasBody = (merged['email_body'] ?? merged['body'] ?? '').toString().trim().isNotEmpty;
     final hasPhone = _cleanPhone(merged['phone']).isNotEmpty;
@@ -1310,7 +1301,7 @@ class _DashboardState extends State<Dashboard> {
       backgroundColor: const Color(0xFF111827),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        return FutureBuilder<Map<String, dynamic>>(
+        return FutureBuilder>(
           future: _fetchMergedDetail(j),
           builder: (ctx, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
@@ -1472,7 +1463,8 @@ class _DashboardState extends State<Dashboard> {
       },
     );
   }
-    void _showAddManualDialog() {
+
+  void _showAddManualDialog() {
     final companyCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     final customSkillCtrl = TextEditingController();
@@ -1504,7 +1496,7 @@ class _DashboardState extends State<Dashboard> {
                     _clientTextField(emailCtrl, 'Email (optional - bot will find if empty)'),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: _clientsCache.any((c) => (c['id'] ?? '') == selectedClient) ? selectedClient : null,
+                      initialValue: _clientsCache.any((c) => (c['id'] ?? '') == selectedClient) ? selectedClient : null,
                       decoration: InputDecoration(filled: true, fillColor: const Color(0xFF090D16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
                       dropdownColor: const Color(0xFF111827),
                       style: const TextStyle(color: Colors.white),
@@ -1514,7 +1506,7 @@ class _DashboardState extends State<Dashboard> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: jobType,
+                      initialValue: jobType,
                       decoration: InputDecoration(filled: true, fillColor: const Color(0xFF090D16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
                       dropdownColor: const Color(0xFF111827),
                       style: const TextStyle(color: Colors.white),
@@ -1535,13 +1527,13 @@ class _DashboardState extends State<Dashboard> {
                         onPressed: () async {
                           final company = companyCtrl.text.trim();
                           if (company.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a company name.'), backgroundColor: Colors.red));
+                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter a company name.'), backgroundColor: Colors.red));
                             return;
                           }
                           String finalSkill = jobType;
                           if (jobType == 'CUSTOM') {
                             if (customSkillCtrl.text.trim().isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a custom skill.'), backgroundColor: Colors.red));
+                              ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter a custom skill.'), backgroundColor: Colors.red));
                               return;
                             }
                             finalSkill = _normalizeSkill(customSkillCtrl.text);
@@ -1559,7 +1551,7 @@ class _DashboardState extends State<Dashboard> {
                                 ],
                               ),
                             );
-                            if (proceed != true) return;
+                            if (proceed != true || !mounted) return;
                           }
                           final selClient = _clientsCache.where((c) => (c['id'] ?? '').toString() == selectedClient).toList();
                           if (selClient.isNotEmpty && selClient.first['gmail_connected'] != true) {
@@ -1575,7 +1567,7 @@ class _DashboardState extends State<Dashboard> {
                                 ],
                               ),
                             );
-                            if (proceed2 != true) return;
+                            if (proceed2 != true || !mounted) return;
                           }
                           try {
                             final clientName = selClient.isNotEmpty ? (selClient.first['name'] ?? '').toString() : '';
@@ -1591,12 +1583,10 @@ class _DashboardState extends State<Dashboard> {
                               'created_at': DateTime.now().toIso8601String(),
                               'timestamp': DateTime.now().toIso8601String(),
                             });
-                            if (context.mounted) {
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Manual request queued for $finalSkill. The bot will process it shortly.'), backgroundColor: const Color(0xFF10B981)));
-                            }
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Manual request queued for $finalSkill. The bot will process it shortly.'), backgroundColor: const Color(0xFF10B981)));
                           } catch (e) {
-                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
                           }
                         },
                         child: const Text('Queue Manual Send', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
@@ -1659,7 +1649,6 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  // FIX 2 - Replies: filter by same Client Filter + clamp to 100% - never 1300% again
   Widget _repliesMetrics(int totalSent) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('jobs_replies').snapshots(),
@@ -1833,7 +1822,7 @@ class _DashboardState extends State<Dashboard> {
       stream: FirebaseFirestore.instance.collection('jobs_replies').orderBy('timestamp', descending: true).limit(20).snapshots(),
       builder: (context, snap) {
         if (!snap.hasData) return const SizedBox.shrink();
-        var docs = snap.data!.docs.where((d) {
+        final docs = snap.data!.docs.where((d) {
           final r = d.data() as Map<String, dynamic>;
           return _matchesClientFilter(r);
         }).toList();
@@ -1974,7 +1963,6 @@ class _DashboardState extends State<Dashboard> {
         color: const Color(0xFF10B981),
         backgroundColor: const Color(0xFF111827),
         child: SingleChildScrollView(
-          // FIX 3 - Smooth scroll
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -2003,94 +1991,87 @@ class _DashboardState extends State<Dashboard> {
               const SizedBox(height: 20),
               StreamBuilder<DocumentSnapshot>(
                 stream: FirebaseFirestore.instance.collection('bot_status').doc('current').snapshots(),
-                builder: (context, snap) {
-                  final data = snap.data?.data() as Map<String, dynamic>?;
+                builder: (context, statusSnap) {
+                  final data = statusSnap.data?.data() as Map<String, dynamic>?;
                   final rawCompany = (data?['last_company'] ?? '').toString().trim();
                   final lastCompany = (rawCompany.isEmpty || rawCompany.startsWith('Waiting ')) ? 'Waiting' : rawCompany;
                   final lastRun = (data?['last_run'] ?? 'No recent activity').toString();
                   return StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(100).snapshots(),
-                    builder: (context, snap2) {
-                      final allDocs = snap2.data?.docs ?? [];
-                      final sentTodayFirestore = allDocs.where((d) {
+                    builder: (context, sentSnap) {
+                      final allDocs = sentSnap.data?.docs ?? [];
+                      final filtered = allDocs.where((d) {
                         final m = d.data() as Map<String, dynamic>;
-                        if (!_matchesClientFilter(m)) return false;
+                        return _matchesClientFilter(m);
+                      }).toList();
+                      final totalSent = filtered.length;
+                      final sentTodayFirestore = filtered.where((d) {
+                        final m = d.data() as Map<String, dynamic>;
                         final dt = _parseDate(m['timestamp']);
                         return dt != null && _dayKey(dt) == _dayKey(DateTime.now());
                       }).length;
-                      return Container(
-                        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1F2937))),
-                        child: Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1F2937))),
+                            child: Padding(
+                              padding: const EdgeInsets.all(18),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.bolt, size: 16, color: Color(0xFF10B981))),
-                                  const SizedBox(width: 10),
-                                  const Text('Bot Status', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
-                                  const Spacer(),
-                                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: const Text('LIVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF34D399)))),
-                                ],
-                              ),
-                              const SizedBox(height: 18),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('$sentTodayFirestore', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
-                                        const SizedBox(height: 2),
-                                        const Text('Sent Today - Firestore', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
-                                      ],
-                                    ),
+                                  Row(
+                                    children: [
+                                      Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.bolt, size: 16, color: Color(0xFF10B981))),
+                                      const SizedBox(width: 10),
+                                      const Text('Bot Status', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+                                      const Spacer(),
+                                      Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: const Text('LIVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF34D399)))),
+                                    ],
                                   ),
+                                  const SizedBox(height: 18),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text('$sentTodayFirestore', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+                                            const SizedBox(height: 2),
+                                            const Text('Sent Today - Firestore', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text('Last: $lastCompany', style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                                  Text(lastRun, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                                  const SizedBox(height: 12),
+                                  _systemRow('Bot', 'Online'),
+                                  const SizedBox(height: 8),
+                                  _systemRow('Gmail', 'Connected'),
+                                  const SizedBox(height: 8),
+                                  _systemRow('Active Client', _activeClientDisplayName),
                                 ],
                               ),
-                              const SizedBox(height: 12),
-                              Text('Last: $lastCompany', style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
-                              Text(lastRun, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
-                              const SizedBox(height: 12),
-                              _systemRow('Bot', 'Online'),
-                              const SizedBox(height: 8),
-                              _systemRow('Gmail', 'Connected'),
-                              const SizedBox(height: 8),
-                              _systemRow('Active Client', _activeClientDisplayName),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildGraph(filtered),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              _metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'),
+                              const SizedBox(width: 12),
+                              _metric('Today', '$sentTodayFirestore', Icons.today_outlined, 'Sent today'),
                             ],
                           ),
-                        ),
+                          const SizedBox(height: 12),
+                          _repliesMetrics(totalSent),
+                        ],
                       );
                     },
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(100).snapshots(),
-                builder: (context, snap) {
-                  final allDocs = snap.data?.docs ?? [];
-                  final filtered = allDocs.where((d) {
-                    final m = d.data() as Map<String, dynamic>;
-                    return _matchesClientFilter(m);
-                  }).toList();
-                  final totalSent = filtered.length;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildGraph(filtered),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          _metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'),
-                          const SizedBox(width: 12),
-                          _metric('Today', '${filtered.where((d) { final m = d.data() as Map<String, dynamic>; final dt = _parseDate(m['timestamp']); return dt != null && _dayKey(dt) == _dayKey(DateTime.now()); }).length}', Icons.today_outlined, 'Sent today'),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      _repliesMetrics(totalSent),
-                    ],
                   );
                 },
               ),
@@ -2184,9 +2165,16 @@ class _DashboardState extends State<Dashboard> {
                   stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(_jobsLimit).snapshots(),
                   builder: (context, snap) {
                     if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)));
-                    var docs = snap.data!.docs.where((d) {
+                    final docs = snap.data!.docs.where((d) {
                       final m = d.data() as Map<String, dynamic>;
                       if (!_matchesClientFilter(m)) return false;
+                      if (filter == 'Sent') {
+                        final st = (m['status'] ?? 'sent').toString().toLowerCase();
+                        if (st.contains('follow')) return false;
+                      } else if (filter == 'Follow-up') {
+                        final st = (m['status'] ?? '').toString().toLowerCase();
+                        if (!st.contains('follow') && m['has_followup'] != true) return false;
+                      }
                       if (searchQuery.isNotEmpty) {
                         final comp = (m['company'] ?? '').toString().toLowerCase();
                         final em = (m['email'] ?? '').toString().toLowerCase();
@@ -2243,11 +2231,11 @@ class _DashboardState extends State<Dashboard> {
                   stream: FirebaseFirestore.instance.collection('jobs_followups').orderBy('timestamp', descending: true).limit(_followupsLimit).snapshots(),
                   builder: (context, snap) {
                     if (!snap.hasData) return const SizedBox.shrink();
-                    var docs = snap.data!.docs.where((d) {
+                    final docs = snap.data!.docs.where((d) {
                       final m = d.data() as Map<String, dynamic>;
                       return _matchesClientFilter(m);
                     }).toList();
-                    if (docs.isEmpty) return Card(child: const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No follow-ups yet.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
+                    if (docs.isEmpty) return const Card(child: Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No follow-ups yet.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
                     return Column(
                       children: docs.map((d) {
                         final m = d.data() as Map<String, dynamic>;
@@ -2276,11 +2264,11 @@ class _DashboardState extends State<Dashboard> {
                 stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(),
                 builder: (context, snap) {
                   if (!snap.hasData) return const SizedBox.shrink();
-                  var docs = snap.data!.docs.where((d) {
+                  final docs = snap.data!.docs.where((d) {
                     final m = d.data() as Map<String, dynamic>;
                     return _matchesManualFilter(m);
                   }).toList();
-                  if (docs.isEmpty) return Card(child: const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No manual requests.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
+                  if (docs.isEmpty) return const Card(child: Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No manual requests.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
                   return Column(
                     children: docs.map((d) {
                       final m = d.data() as Map<String, dynamic>;
