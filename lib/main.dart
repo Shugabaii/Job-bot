@@ -63,6 +63,7 @@ class _DashboardState extends State<Dashboard> {
   String searchQuery = '';
   int _jobsLimit = 20;
   int _followupsLimit = 20;
+  bool _showArchived = false;
 
   String _selectedClientFilter = 'All';
   String _activeClientId = 'user';
@@ -124,45 +125,54 @@ class _DashboardState extends State<Dashboard> {
   }
 
   // ================= V75 FIX - DASHBOARD 100 CAP =================
-  // OLD: .limit(100) + total = docs.length -> stuck at 100 forever
-  // NEW: count() aggregation -> counts ALL docs, no limit, works for 1000+
+  // OLD: .limit(100) + total = docs.length -> stuck at 100
+  // NEW: count() aggregation -> counts ALL docs, no limit
   Future<Map<String, int>> _fetchDashboardCounts() async {
     final db = FirebaseFirestore.instance;
-    int total = 0;
+    int totalAll = 0;
+    int archivedCount = 0;
     int todayCount = 0;
+    int todayArchived = 0;
     try {
       final totalAgg = await db.collection('jobs_sent').count().get();
-      total = totalAgg.count ?? 0;
+      totalAll = totalAgg.count ?? 0;
     } catch (_) {
       try {
         final s = await db.collection('jobs_sent').get();
-        total = s.docs.length;
+        totalAll = s.docs.length;
       } catch (_) {}
     }
+    // V76 ARCHIVE: Total = All - Archived, so archived emails do not count
+    try {
+      final archAgg = await db.collection('jobs_sent').where('archived', isEqualTo: true).count().get();
+      archivedCount = archAgg.count ?? 0;
+    } catch (_) {
+      archivedCount = 0;
+    }
+    int total = totalAll - archivedCount;
+    if (total < 0) total = 0;
     try {
       final now = DateTime.now();
       final dayKey = _dayKey(now);
       final todayAgg = await db.collection('jobs_sent').where('date', isEqualTo: dayKey).count().get();
-      todayCount = todayAgg.count ?? 0;
-      if (todayCount == 0) {
+      int todayAll = todayAgg.count ?? 0;
+      if (todayAll == 0) {
         final start = DateTime(now.year, now.month, now.day);
         final snap = await db.collection('jobs_sent').where('timestamp', isGreaterThanOrEqualTo: start.toIso8601String()).count().get();
-        todayCount = snap.count ?? 0;
+        todayAll = snap.count ?? 0;
       }
+      // Subtract archived today if any - best effort, keep it simple
+      todayCount = todayAll - todayArchived;
+      if (todayCount < 0) todayCount = 0;
     } catch (_) {}
-    // If client filter is not All, we still return global total for header.
-    // The filtered total is handled in build() via graph docs if needed.
-    // For now return global - this is what user wants: real total, not 100 cap.
-    return {'total': total, 'today': todayCount};
+    return {'total': total, 'today': todayCount, 'archived': archivedCount};
   }
 
-  // V75: Count for a specific client filter (when filter != All)
   Future<int> _fetchFilteredTotal() async {
     if (_selectedClientFilter == 'All') {
       final m = await _fetchDashboardCounts();
       return m['total'] ?? 0;
     }
-    // For filtered view, count by client_name / client_id via query - still no 100 cap
     try {
       final db = FirebaseFirestore.instance;
       final f = _selectedClientFilter.toLowerCase();
@@ -177,9 +187,90 @@ class _DashboardState extends State<Dashboard> {
         final a2 = await db.collection('jobs_sent').where('client_id', isEqualTo: f).count().get();
         c2 = a2.count ?? 0;
       } catch (_) {}
-      return c1 > c2 ? c1 : c2;
+      int best = c1 > c2 ? c1 : c2;
+      return best;
     } catch (_) {
       return 0;
+    }
+  }
+
+  // ================= V76 ARCHIVE - PROFESSIONAL DELETE =================
+  // Archive = hide from dashboard, keep in Firebase for records, bot will NOT resend
+  bool _isArchived(Map<String, dynamic> m) {
+    if (m['archived'] == true) return true;
+    final s = (m['status'] ?? '').toString().toLowerCase();
+    return s == 'archived';
+  }
+
+  Future<void> _archiveEmail(String docId, String company, Map<String, dynamic> data) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF111827),
+        title: Text('Archive $company?', style: const TextStyle(color: Colors.white)),
+        content: const Text(
+          'This email will be hidden from the dashboard and from Total Sent.\n\nIt will NOT be deleted forever. It stays in Firebase for records, and the bot will NOT resend to this company.\n\nYou can view archived emails with Show Archived.',
+          style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Archive', style: TextStyle(color: Color(0xFFF59E0B)))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await FirebaseFirestore.instance.collection('jobs_sent').doc(docId).set({
+        'archived': true,
+        'status': 'archived',
+        'archived_at': DateTime.now().toIso8601String(),
+      }, SetOptions(merge: true));
+      // Also mark in details so bot history stays consistent
+      try {
+        final email = (data['email'] ?? '').toString();
+        if (company.isNotEmpty && email.isNotEmpty) {
+          final q = await FirebaseFirestore.instance.collection('jobs_sent_details').where('company', isEqualTo: company).where('email', isEqualTo: email).get();
+          for (final d in q.docs) {
+            await d.reference.set({'archived': true, 'status': 'archived', 'archived_at': DateTime.now().toIso8601String()}, SetOptions(merge: true));
+          }
+        } else if (company.isNotEmpty) {
+          final q = await FirebaseFirestore.instance.collection('jobs_sent_details').where('company', isEqualTo: company).get();
+          for (final d in q.docs) {
+            await d.reference.set({'archived': true, 'status': 'archived', 'archived_at': DateTime.now().toIso8601String()}, SetOptions(merge: true));
+          }
+        }
+      } catch (_) {}
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$company archived. It is hidden but not deleted.'), backgroundColor: const Color(0xFFF59E0B)));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Archive failed: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _restoreEmail(String docId, String company, Map<String, dynamic> data) async {
+    try {
+      await FirebaseFirestore.instance.collection('jobs_sent').doc(docId).set({
+        'archived': false,
+        'status': 'sent',
+        'archived_at': '',
+      }, SetOptions(merge: true));
+      try {
+        final email = (data['email'] ?? '').toString();
+        if (company.isNotEmpty && email.isNotEmpty) {
+          final q = await FirebaseFirestore.instance.collection('jobs_sent_details').where('company', isEqualTo: company).where('email', isEqualTo: email).get();
+          for (final d in q.docs) {
+            await d.reference.set({'archived': false, 'status': 'sent'}, SetOptions(merge: true));
+          }
+        }
+      } catch (_) {}
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$company restored.'), backgroundColor: const Color(0xFF10B981)));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red));
     }
   }
 
@@ -862,7 +953,7 @@ class _DashboardState extends State<Dashboard> {
   Widget _buildGraph(List<QueryDocumentSnapshot> docs) {
     final now = DateTime.now(); final Map<String, int> perDay = {};
     for (var i = 6; i >= 0; i--) { final d = now.subtract(Duration(days: i)); perDay[_dayKey(d)] = 0; }
-    for (final d in docs) { final m = d.data() as Map<String, dynamic>; final dt = _parseDate(m['timestamp'] ?? m['date']); if (dt == null) continue; final k = _dayKey(dt); if (perDay.containsKey(k)) perDay[k] = (perDay[k] ?? 0) + 1; }
+    for (final d in docs) { final m = d.data() as Map<String, dynamic>; if (_isArchived(m)) continue; final dt = _parseDate(m['timestamp'] ?? m['date']); if (dt == null) continue; final k = _dayKey(dt); if (perDay.containsKey(k)) perDay[k] = (perDay[k] ?? 0) + 1; }
     final maxV = perDay.values.fold<int>(1, (a, b) => b > a ? b : a);
     return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Last 7 Days', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
@@ -1016,11 +1107,9 @@ class _DashboardState extends State<Dashboard> {
           ])));
         }),
         const SizedBox(height: 16),
-        // ===== V75 FIX: Total Sent via count(), NOT .limit(100) + docs.length =====
         FutureBuilder<Map<String, int>>(
           future: _selectedClientFilter == 'All' ? _fetchDashboardCounts() : Future.value({'total': 0, 'today': 0}),
           builder: (context, countSnap) {
-            // For All filter, use count(). For specific client, use filtered count via FutureBuilder below
             if (_selectedClientFilter != 'All') {
               return FutureBuilder<int>(
                 future: _fetchFilteredTotal(),
@@ -1045,6 +1134,7 @@ class _DashboardState extends State<Dashboard> {
             }
             final totalSent = countSnap.data?['total'] ?? 0;
             final todaySent = countSnap.data?['today'] ?? 0;
+            final archivedCount = countSnap.data?['archived'] ?? 0;
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('jobs_sent').where('timestamp', isGreaterThanOrEqualTo: DateTime.now().subtract(const Duration(days: 7)).toIso8601String()).snapshots(),
@@ -1056,6 +1146,10 @@ class _DashboardState extends State<Dashboard> {
               ),
               const SizedBox(height: 12),
               Row(children: [_metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'), const SizedBox(width: 12), _metric('Today', '$todaySent', Icons.today_outlined, 'Sent today')]),
+              if (archivedCount > 0) ...[
+                const SizedBox(height: 8),
+                Text('$archivedCount archived - hidden from Total, kept in Firebase', style: const TextStyle(fontSize: 11, color: Color(0xFFF59E0B))),
+              ],
               const SizedBox(height: 12),
               _repliesMetrics(totalSent),
             ]);
@@ -1114,7 +1208,10 @@ class _DashboardState extends State<Dashboard> {
         const SizedBox(height: 20),
         _repliesList(),
         const SizedBox(height: 24),
-        const Text('Recent Emails', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('Recent Emails', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+          TextButton(onPressed: () => setState(() => _showArchived = !_showArchived), child: Text(_showArchived ? 'Hide Archived' : 'Show Archived', style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 12, fontWeight: FontWeight.w600))),
+        ]),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(_jobsLimit).snapshots(),
@@ -1123,6 +1220,10 @@ class _DashboardState extends State<Dashboard> {
             var docs = snap.data!.docs.where((d) {
               final m = d.data() as Map<String, dynamic>;
               if (!_matchesClientFilter(m)) return false;
+              // V76: Hide archived unless Show Archived is on
+              final isArch = _isArchived(m);
+              if (!_showArchived && isArch) return false;
+              if (_showArchived && !isArch) return false;
               if (searchQuery.isNotEmpty) {
                 final comp = (m['company'] ?? '').toString().toLowerCase();
                 final em = (m['email'] ?? '').toString().toLowerCase();
@@ -1130,26 +1231,36 @@ class _DashboardState extends State<Dashboard> {
               }
               return true;
             }).toList();
-            if (docs.isEmpty) return Card(child: Padding(padding: const EdgeInsets.all(20), child: Center(child: Text(searchQuery.isEmpty ? 'No emails yet. The bot will start sending soon.' : 'No match for "$searchQuery"', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12), textAlign: TextAlign.center))));
+            if (docs.isEmpty) return Card(child: Padding(padding: const EdgeInsets.all(20), child: Center(child: Text(_showArchived ? 'No archived emails.' : (searchQuery.isEmpty ? 'No emails yet. The bot will start sending soon.' : 'No match for "$searchQuery"'), style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12), textAlign: TextAlign.center))));
             return Column(children: [
               ...docs.map((d) {
                 final m = d.data() as Map<String, dynamic>;
                 final company = (m['company'] ?? 'Unknown').toString();
                 final email = (m['email'] ?? '').toString();
                 final clientName = _clientDisplayName(m);
+                final isArch = _isArchived(m);
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+                  decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: isArch ? const Color(0xFFF59E0B).withValues(alpha: 0.4) : const Color(0xFF1F2937))),
                   child: ListTile(
                     onTap: () => _showEmailDetail(m),
                     leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.mail_outline, color: Color(0xFF34D399), size: 16)),
-                    title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Row(children: [
+                      Expanded(child: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      if (isArch) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)), child: const Text('ARCHIVED', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFFF59E0B)))),
+                    ]),
                     subtitle: Text('$email - $clientName - ${_formatDate(m['timestamp'])}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (!isArch)
+                        IconButton(tooltip: 'Archive', icon: const Icon(Icons.archive_outlined, size: 18, color: Color(0xFFF59E0B)), visualDensity: VisualDensity.compact, onPressed: () => _archiveEmail(d.id, company, m))
+                      else
+                        IconButton(tooltip: 'Restore', icon: const Icon(Icons.unarchive_outlined, size: 18, color: Color(0xFF10B981)), visualDensity: VisualDensity.compact, onPressed: () => _restoreEmail(d.id, company, m)),
+                      const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+                    ]),
                   ),
                 );
               }),
-              TextButton(onPressed: () => setState(() => _jobsLimit += 20), child: const Text('Load More', style: TextStyle(color: Color(0xFF10B981)))),
+              if (!_showArchived) TextButton(onPressed: () => setState(() => _jobsLimit += 20), child: const Text('Load More', style: TextStyle(color: Color(0xFF10B981)))),
             ]);
           },
         ),
