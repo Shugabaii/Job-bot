@@ -5,7 +5,7 @@ class QueuePage extends StatelessWidget {
   final bool Function(Map<String, dynamic>) matchesManualFilter;
   final Color Function(String) manualStatusColor;
   final String Function(String) manualStatusLabel;
-  final Future<void> Function(String docId, String company, String status) onShowManualActions;
+  final Future<void> Function(String, String, String) onShowManualActions;
 
   const QueuePage({
     super.key,
@@ -18,7 +18,7 @@ class QueuePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+      physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -64,7 +64,10 @@ class QueuePage extends StatelessWidget {
                         child: Icon(Icons.schedule, color: manualStatusColor(st), size: 16),
                       ),
                       title: Text((m['company'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
-                      subtitle: Text('${m['email'] ?? ''} - ${manualStatusLabel(st)}${skillLabel.isNotEmpty ? ' - $skillLabel' : ''}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                      subtitle: Text(
+                        '${m['email'] ?? ''} - ${manualStatusLabel(st)}${skillLabel.isNotEmpty ? ' - $skillLabel' : ''}',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
+                      ),
                       trailing: const Icon(Icons.more_horiz, size: 16, color: Color(0xFF6B7280)),
                     ),
                   );
@@ -78,4 +81,3 @@ class QueuePage extends StatelessWidget {
     );
   }
 }
-
