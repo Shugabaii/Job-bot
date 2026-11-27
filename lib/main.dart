@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'firebase_options.dart';
 import 'pages/overview_page.dart';
@@ -65,7 +64,7 @@ class Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<Dashboard> {
-  int _currentTab = 0;
+  int _currentIndex = 0;
   String filter = 'All';
   String searchQuery = '';
   int _jobsLimit = 20;
@@ -76,7 +75,7 @@ class _DashboardState extends State<Dashboard> {
   String _recentEmailFilter = 'All';
   String _selectedClientFilter = 'All';
   String _activeClientId = 'user';
-  var _clientsCache = [];
+  List> _clientsCache = [];
   static const String _hfSpaceUrl = 'https://iharmayau-habeeb-job-bot.hf.space/';
   static const List<String> _recruiterWords = [
     'recruitment', 'recruiting', 'recruiter', 'staffing', 'headhunter',
@@ -334,7 +333,7 @@ class _DashboardState extends State<Dashboard> {
           pw.SizedBox(height: 16),
           pw.Container(
             padding: const pw.EdgeInsets.all(12),
-            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.Border.circular(8)),
+            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(8)),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
@@ -356,7 +355,7 @@ class _DashboardState extends State<Dashboard> {
           pw.SizedBox(height: 8),
           pw.Container(
             padding: const pw.EdgeInsets.all(12),
-            decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.Border.circular(8)),
+            decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(8)),
             child: pw.Text(body, style: const pw.TextStyle(fontSize: 11)),
           ),
         ],
@@ -393,7 +392,7 @@ class _DashboardState extends State<Dashboard> {
             return pw.Container(
               margin: const pw.EdgeInsets.only(bottom: 10),
               padding: const pw.EdgeInsets.all(12),
-              decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.Border.circular(8)),
+              decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(8)),
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
@@ -844,7 +843,7 @@ class _DashboardState extends State<Dashboard> {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: const Color(0xFF064E3B).withOpacity(0.3), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4))),
+                      decoration: BoxDecoration(color: const Color(0xFF064E3B).withValues(alpha: 0.3), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4))),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1014,29 +1013,6 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  Widget _collapsibleHeader(String title, bool expanded, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
-        child: Row(
-          children: [
-            Expanded(child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white))),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(color: const Color(0xFF10B981), borderRadius: BorderRadius.circular(20)),
-              child: Text(expanded ? 'Hide' : 'View', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-            ),
-            const SizedBox(width: 6),
-            Icon(expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: const Color(0xFF9CA3AF), size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
   String _formatDate(dynamic ts) {
     if (ts == null) return '';
     if (ts is Timestamp) {
@@ -1108,7 +1084,7 @@ class _DashboardState extends State<Dashboard> {
     return "$skillDisp Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
-  Future _fetchMergedDetail(Map j) async {
+  Future> _fetchMergedDetail(Map<String, dynamic> j) async {
     final merged = Map<String, dynamic>.from(j);
     final hasBody = (merged['email_body'] ?? merged['body'] ?? '').toString().trim().isNotEmpty;
     final hasPhone = _cleanPhone(merged['phone']).isNotEmpty;
@@ -1186,7 +1162,7 @@ class _DashboardState extends State<Dashboard> {
       backgroundColor: const Color(0xFF111827),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        return FutureBuilder(
+        return FutureBuilder>(
           future: _fetchMergedDetail(j),
           builder: (ctx, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
@@ -1488,76 +1464,6 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  Widget _buildGraph(List<QueryDocumentSnapshot> docs) {
-    final now = DateTime.now();
-    final Map<String, int> perDay = {};
-    for (var i = 6; i >= 0; i--) {
-      final d = now.subtract(Duration(days: i));
-      perDay[_dayKey(d)] = 0;
-    }
-    for (final d in docs) {
-      final m = d.data() as Map<String, dynamic>;
-      final dt = _parseDate(m['timestamp'] ?? m['date']);
-      if (dt == null) continue;
-      final k = _dayKey(dt);
-      if (perDay.containsKey(k)) perDay[k] = (perDay[k] ?? 0) + 1;
-    }
-    final maxV = perDay.values.fold<int>(1, (a, b) => b > a ? b : a);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Last 7 Days', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: perDay.entries.map((e) {
-                final h = 8 + (e.value / maxV * 60);
-                return Expanded(
-                  child: Column(
-                    children: [
-                      Text('${e.value}', style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
-                      const SizedBox(height: 4),
-                      Container(height: h, margin: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: const Color(0xFF10B981), borderRadius: BorderRadius.circular(4))),
-                      const SizedBox(height: 4),
-                      Text(_dayLabel(DateTime.parse(e.key)), style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _repliesMetrics(int totalSent) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('jobs_replies').snapshots(),
-      builder: (context, snap) {
-        final all = snap.data?.docs ?? [];
-        final filtered = all.where((d) => _matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
-        final replies = filtered.length;
-        double rate = 0.0;
-        if (totalSent > 0) {
-          rate = (replies / totalSent * 100);
-          if (rate > 100) rate = 100;
-          if (rate < 0) rate = 0;
-        }
-        return Row(
-          children: [
-            _metric('Replies', '$replies', Icons.mark_email_read_outlined, 'Companies replied'),
-            const SizedBox(width: 12),
-            _metric('Reply Rate', '${rate.toStringAsFixed(1)}%', Icons.trending_up, 'Response rate'),
-          ],
-        );
-      },
-    );
-  }
-
   Color _manualStatusColor(String s) {
     switch (s.toLowerCase()) {
       case 'sent': return const Color(0xFF10B981);
@@ -1702,96 +1608,6 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  Widget _repliesList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('jobs_replies').orderBy('timestamp', descending: true).limit(20).snapshots(),
-      builder: (context, snap) {
-        if (!snap.hasData) return const SizedBox.shrink();
-        final docs = snap.data!.docs.where((d) {
-          final r = d.data() as Map<String, dynamic>;
-          return _matchesClientFilter(r);
-        }).toList();
-        if (docs.isEmpty) {
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: Column(
-                  children: [
-                    Container(padding: const EdgeInsets.all(10), decoration: const BoxDecoration(color: Color(0xFF1F2937), shape: BoxShape.circle), child: const Icon(Icons.reply_outlined, size: 22, color: Color(0xFF9CA3AF))),
-                    const SizedBox(height: 10),
-                    const Text('No replies yet', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13)),
-                    const SizedBox(height: 4),
-                    const Text('When a company replies in Gmail, it will appear here automatically.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11), textAlign: TextAlign.center),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Replies', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
-                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(6)), child: Text('${docs.length} total - Tap to view reply', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ...docs.map((d) {
-              final r = d.data() as Map<String, dynamic>;
-              final company = (r['company'] ?? 'Unknown').toString();
-              final email = (r['email'] ?? '').toString();
-              final subject = (r['subject'] ?? '').toString();
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3))),
-                child: ListTile(
-                  onTap: () => _showReplyDetail(r),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                  leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.reply_outlined, color: Color(0xFFF59E0B), size: 16)),
-                  title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Padding(padding: const EdgeInsets.only(top: 2), child: Text(subject.isNotEmpty ? '$subject - $email' : email, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))),
-                  trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
-                ),
-              );
-            }),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _metric(String title, String value, IconData icon, String sub) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [Icon(icon, size: 14, color: const Color(0xFF10B981)), const SizedBox(width: 6), Text(title, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)))]),
-            const SizedBox(height: 8),
-            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-            const SizedBox(height: 2),
-            Text(sub, style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _systemRow(String title, String status) {
-    return Row(
-      children: [
-        Expanded(child: Text(title, style: const TextStyle(fontSize: 13, color: Colors.white))),
-        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF064E3B), borderRadius: BorderRadius.circular(6)), child: Text(status, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34D399)))),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
@@ -1800,53 +1616,52 @@ class _DashboardState extends State<Dashboard> {
         matchesClientFilter: _matchesClientFilter,
         parseDate: _parseDate,
         dayKey: _dayKey,
-        buildGraph: _buildGraph,
-        repliesMetrics: _repliesMetrics,
-        metric: _metric,
-        systemRow: _systemRow,
-        onOpenBotSettings: _showBotSettingsDialog,
+        dayLabel: _dayLabel,
+        onOpenSettings: _showBotSettingsDialog,
         onRefresh: () => setState(() {}),
       ),
       ClientsPage(
         activeClientId: _activeClientId,
-        onClientsLoaded: (clients) => _clientsCache = clients,
+        onClientsUpdated: (clients) {
+          if (!mounted) return;
+          setState(() => _clientsCache = clients);
+        },
         onUseMeHabibu: _useMeHabibu,
-        onShowAddClient: _showAddClientDialog,
-        onDeleteClient: _deleteClient,
+        onAddClient: _showAddClientDialog,
         senderEmailForClient: _senderEmailForClient,
+        onDeleteClient: _deleteClient,
         onEditSenderEmail: _editSenderEmail,
         onSetActiveClient: _setActiveClient,
         onShowConnectLink: _showConnectLinkDialog,
         onPauseResumeClient: _pauseResumeClient,
         onShowLimitDialog: _showLimitDialog,
-        onPasteCvForClient: _pasteCvForClient,
-        onShowEditProof: _showEditProofDialog,
+        onPasteCv: _pasteCvForClient,
+        onEditProof: _showEditProofDialog,
       ),
       ActivityPage(
         selectedClientFilter: _selectedClientFilter,
         clientsCache: _clientsCache,
-        onClientFilterChanged: (v) => setState(() => _selectedClientFilter = v),
-        onSearchChanged: (v) => setState(() => searchQuery = v.toLowerCase()),
+        searchQuery: searchQuery,
         filter: filter,
-        onFilterChanged: (v) => setState(() => filter = v),
         showReplies: _showReplies,
-        onToggleReplies: () => setState(() => _showReplies = !_showReplies),
-        repliesList: _repliesList,
         showRecentEmails: _showRecentEmails,
-        onToggleRecentEmails: () => setState(() => _showRecentEmails = !_showRecentEmails),
+        showFollowups: _showFollowups,
         recentEmailFilter: _recentEmailFilter,
-        onRecentEmailFilterChanged: (v) => setState(() => _recentEmailFilter = v),
         jobsLimit: _jobsLimit,
+        followupsLimit: _followupsLimit,
+        onClientFilterChanged: (v) => setState(() => _selectedClientFilter = v),
+        onSearchChanged: (v) => setState(() => searchQuery = v),
+        onFilterChanged: (v) => setState(() => filter = v),
+        onToggleReplies: () => setState(() => _showReplies = !_showReplies),
+        onToggleRecentEmails: () => setState(() => _showRecentEmails = !_showRecentEmails),
+        onToggleFollowups: () => setState(() => _showFollowups = !_showFollowups),
+        onRecentEmailFilterChanged: (v) => setState(() => _recentEmailFilter = v),
         onLoadMoreJobs: () => setState(() => _jobsLimit += 20),
         matchesClientFilter: _matchesClientFilter,
-        searchQuery: searchQuery,
         clientDisplayName: _clientDisplayName,
         formatDate: _formatDate,
         onShowEmailDetail: _showEmailDetail,
-        collapsibleHeader: _collapsibleHeader,
-        showFollowups: _showFollowups,
-        onToggleFollowups: () => setState(() => _showFollowups = !_showFollowups),
-        followupsLimit: _followupsLimit,
+        onShowReplyDetail: _showReplyDetail,
         onShowFollowupDetail: _showFollowupDetail,
       ),
       QueuePage(
@@ -1898,7 +1713,7 @@ class _DashboardState extends State<Dashboard> {
         ],
         bottom: const PreferredSize(preferredSize: Size.fromHeight(1), child: Divider(height: 1, color: Color(0xFF1F2937))),
       ),
-      floatingActionButton: _currentTab == 3
+      floatingActionButton: _currentIndex == 3
           ? FloatingActionButton.extended(
               onPressed: _showAddManualDialog,
               backgroundColor: const Color(0xFF10B981),
@@ -1906,22 +1721,15 @@ class _DashboardState extends State<Dashboard> {
               label: const Text('Send Manually', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
             )
           : null,
-      body: RefreshIndicator(
-        onRefresh: () async {
-          setState(() {});
-        },
-        color: const Color(0xFF10B981),
-        backgroundColor: const Color(0xFF111827),
-        child: IndexedStack(
-          index: _currentTab,
-          children: pages,
-        ),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: pages,
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentTab,
+        selectedIndex: _currentIndex,
         backgroundColor: const Color(0xFF111827),
         indicatorColor: const Color(0xFF10B981).withValues(alpha: 0.2),
-        onDestinationSelected: (idx) => setState(() => _currentTab = idx),
+        onDestinationSelected: (i) => setState(() => _currentIndex = i),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),
