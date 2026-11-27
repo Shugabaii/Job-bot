@@ -61,9 +61,7 @@ class Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<Dashboard> {
-    bool _matchesManualFilter(Map<String, dynamic> m) {
-    return true;
-    }
+    
     Color _manualStatusColor(String st) {
     if (st == 'done') return const Color(0xFF10B981);
     if (st == 'failed') return const Color(0xFFEF4444);
