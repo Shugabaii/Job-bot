@@ -785,6 +785,10 @@ class _DashboardState extends State<Dashboard> {
     final locCtrl = TextEditingController();
     final cvCtrl = TextEditingController();
     final placeCtrl = TextEditingController();
+    final skillsCtrl = TextEditingController();
+    final projectCtrl = TextEditingController();
+    final projectResultCtrl = TextEditingController();
+    final experienceCtrl = TextEditingController();
     String type = 'freelancer';
     showModalBottomSheet(
       context: context,
@@ -831,6 +835,28 @@ class _DashboardState extends State<Dashboard> {
                       const SizedBox(height: 10),
                       _clientTextField(skillCtrl, 'Qualification e.g. BSc Nursing, RN'),
                     ],
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: const Color(0xFF064E3B).withOpacity(0.3), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4))),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('PROOF - This is why companies reply (REQUIRED)', style: TextStyle(color: Color(0xFF34D399), fontSize: 13, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 4),
+                          const Text('Ask client 3 questions on WhatsApp. Without proof, emails get 0 replies.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11)),
+                          const SizedBox(height: 12),
+                          _clientTextField(skillsCtrl, 'Q1: What tools can you use? e.g. Excel, Power BI, Python, SQL'),
+                          const SizedBox(height: 10),
+                          _clientTextField(projectCtrl, 'Q2: What work have you done? e.g. Analyzed sales data for small shop in Kano using Excel'),
+                          const SizedBox(height: 10),
+                          _clientTextField(projectResultCtrl, 'Q3: What was the result? e.g. Found which product sells best, made dashboard'),
+                          const SizedBox(height: 10),
+                          _clientTextField(experienceCtrl, 'Experience (optional) e.g. 2 years as Data Analyst'),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 10),
                     _clientTextField(emailCtrl, 'Gmail address (sender) e.g. amina@gmail.com'),
                     const SizedBox(height: 6),
@@ -867,6 +893,10 @@ class _DashboardState extends State<Dashboard> {
                               'cv_url': cvCtrl.text.trim(),
                               'cvUrl': cvCtrl.text.trim(),
                               'cvLink': cvCtrl.text.trim(),
+                              'skills': skillsCtrl.text.trim(),
+                              'project_1': projectCtrl.text.trim(),
+                              'project_1_result': projectResultCtrl.text.trim(),
+                              'experience': experienceCtrl.text.trim(),
                               'gmail_connected': false,
                               'is_paused': false,
                               'status': 'active',
@@ -890,6 +920,55 @@ class _DashboardState extends State<Dashboard> {
           },
         );
       },
+    );
+  }
+
+  Future<void> _showEditProofDialog(String clientId, String name, Map<String, dynamic> c) async {
+    final skillsCtrl = TextEditingController(text: (c['skills'] ?? '').toString());
+    final projectCtrl = TextEditingController(text: (c['project_1'] ?? c['project'] ?? '').toString());
+    final resultCtrl = TextEditingController(text: (c['project_1_result'] ?? c['project_result'] ?? '').toString());
+    final expCtrl = TextEditingController(text: (c['experience'] ?? '').toString());
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF111827),
+        title: Text('Proof - $name', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Ask client 3 questions. This proof goes into EVERY email.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+              const SizedBox(height: 12),
+              _clientTextField(skillsCtrl, 'Q1: Tools? e.g. Excel, Power BI, Python'),
+              const SizedBox(height: 10),
+              _clientTextField(projectCtrl, 'Q2: What work did you do?'),
+              const SizedBox(height: 10),
+              _clientTextField(resultCtrl, 'Q3: What was the result?'),
+              const SizedBox(height: 10),
+              _clientTextField(expCtrl, 'Experience (optional)'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+            onPressed: () async {
+              await FirebaseFirestore.instance.collection('clients').doc(clientId).set({
+                'skills': skillsCtrl.text.trim(),
+                'project_1': projectCtrl.text.trim(),
+                'project_1_result': resultCtrl.text.trim(),
+                'experience': expCtrl.text.trim(),
+                'proof_updated_at': DateTime.now().toIso8601String(),
+              }, SetOptions(merge: true));
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Proof saved for $name.'), backgroundColor: const Color(0xFF10B981)));
+            },
+            child: const Text('Save Proof', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1020,6 +1099,7 @@ class _DashboardState extends State<Dashboard> {
               final cvLink = (c['cv_url'] ?? c['cvUrl'] ?? c['cvLink'] ?? '').toString();
               final hasCv = cvLink.isNotEmpty;
               final senderEmail = _senderEmailForClient(c);
+              final hasProof = (c['project_1'] ?? '').toString().isNotEmpty || (c['experience'] ?? '').toString().isNotEmpty;
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: isActive ? const Color(0xFF10B981) : const Color(0xFF1F2937))),
@@ -1089,6 +1169,7 @@ class _DashboardState extends State<Dashboard> {
                           Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: gmailOk ? const Color(0xFF064E3B) : const Color(0xFF7F1D1D), borderRadius: BorderRadius.circular(6)), child: Text(gmailOk ? 'Gmail: Connected' : 'Gmail: Not Connected', style: TextStyle(color: gmailOk ? const Color(0xFF34D399) : const Color(0xFFFCA5A5), fontSize: 10, fontWeight: FontWeight.w600))),
                           Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(6)), child: Text(hasCv ? 'CV: Attached' : 'CV: Missing', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 10, fontWeight: FontWeight.w600))),
                           Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(6)), child: Text('Limit: $maxPerDay/day', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 10, fontWeight: FontWeight.w600))),
+                          Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: hasProof ? const Color(0xFF064E3B) : const Color(0xFF7F1D1D), borderRadius: BorderRadius.circular(6)), child: Text(hasProof ? 'Proof: YES' : 'Proof: MISSING', style: TextStyle(color: hasProof ? const Color(0xFF34D399) : const Color(0xFFFCA5A5), fontSize: 10, fontWeight: FontWeight.w600))),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -1140,6 +1221,16 @@ class _DashboardState extends State<Dashboard> {
                           style: ElevatedButton.styleFrom(backgroundColor: hasCv ? const Color(0xFF1F2937) : const Color(0xFFF59E0B), padding: const EdgeInsets.symmetric(vertical: 9), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                           icon: const Icon(Icons.link, size: 16, color: Colors.white),
                           label: Text(hasCv ? 'CV Linked - Update' : 'Add CV Link (Drive)', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showEditProofDialog(id, name, c),
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 9), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                          icon: const Icon(Icons.star, size: 16, color: Colors.white),
+                          label: Text(hasProof ? 'Edit Proof' : 'Add Proof (Required for replies)', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
                         ),
                       ),
                     ],
@@ -1200,9 +1291,10 @@ class _DashboardState extends State<Dashboard> {
     final why = (j['why'] ?? j['reason'] ?? '').toString().trim();
     final clientType = (j['client_type'] ?? '').toString();
     final clientName = (j['client_name'] ?? 'Habeeb').toString();
+    final proofUsed = (j['proof_used'] ?? j['project_1'] ?? '').toString().trim();
     if (clientType == 'job_seeker') {
       final job = (j['job_wanted'] ?? j['job'] ?? jobType).toString();
-      return "Dear Hiring Manager at $company,\n\nMy name is $clientName. I am applying for the $job position at $company.\n\n${why.isNotEmpty ? why : 'I saw $company is hiring and I am interested in the $job role. I am available immediately.'}\n\nI have attached my CV for your review. I would be grateful for an opportunity to discuss how I can contribute to your team.\n\nThank you for your time.\n\nKind regards,\n$clientName\n$job";
+      return "Dear Hiring Manager at $company,\n\nMy name is $clientName. I am applying for the $job position at $company.\n\n${why.isNotEmpty ? why : 'I saw $company is hiring and I am interested in the $job role. I am available immediately.'}${proofUsed.isNotEmpty ? '\n\nMy work: $proofUsed' : ''}\n\nI have attached my CV for your review. I would be grateful for an opportunity to discuss how I can contribute to your team.\n\nThank you for your time.\n\nKind regards,\n$clientName\n$job";
     }
     final skillDisp = _skillDisplay(jobType);
     final roleLine = _roleLineForSkill(jobType);
@@ -1311,7 +1403,7 @@ class _DashboardState extends State<Dashboard> {
             final company = (merged['company'] ?? 'Unknown').toString();
             final email = (merged['email'] ?? '').toString();
             final clientPhonesHere = _clientsCache.map((c) => _cleanPhone(c['phone'])).where((p) => p.isNotEmpty).toSet();
-final phone = clientPhonesHere.contains(_cleanPhone(merged['phone'])) ? '' : _cleanPhone(merged['phone']);
+            final phone = clientPhonesHere.contains(_cleanPhone(merged['phone'])) ? '' : _cleanPhone(merged['phone']);
             final jobType = (merged['job_type'] ?? 'FLUTTER').toString();
             final dateStr = _formatDate(merged['timestamp']);
             final subject = _buildSubject(merged);
@@ -1419,8 +1511,7 @@ final phone = clientPhonesHere.contains(_cleanPhone(merged['phone'])) ? '' : _cl
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      const Text('WhatsApp Report: Company + Email + Date only - short. PDF Report: Company + Email + Phone + Website + Subject + Reply Status - full proof. PDF opens Share sheet to Save / Download / WhatsApp / Gmail / Drive.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11)),
+                      // V76 REMOVED: Unprofessional note below buttons - deleted
                     ],
                   ),
                 );
@@ -2039,7 +2130,7 @@ final phone = clientPhonesHere.contains(_cleanPhone(merged['phone'])) ? '' : _cl
                                           children: [
                                             Text('$sentTodayFirestore', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
                                             const SizedBox(height: 2),
-                                            const Text('Sent Today - Firestore', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                                            const Text('Sent Today', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
                                           ],
                                         ),
                                       ),
@@ -2269,6 +2360,9 @@ final phone = clientPhonesHere.contains(_cleanPhone(merged['phone'])) ? '' : _cl
                     final m = d.data() as Map<String, dynamic>;
                     return _matchesManualFilter(m);
                   }).toList();
+                  if (docs.isEmpty) return const Card(child: Padding(padding: EdgeInsets.all(16), child:Continuing from where it stopped — here is the rest of the file, from the Manual Queue section to the end. Paste this after the last line you received:
+
+```dart
                   if (docs.isEmpty) return const Card(child: Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No manual requests.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
                   return Column(
                     children: docs.map((d) {
