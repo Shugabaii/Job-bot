@@ -62,7 +62,7 @@ class PilotHelpers {
   static bool matchesClientFilter(
     Map<String, dynamic> j,
     String selectedClientFilter,
-    List> clientsCache,
+    List<Map<String, dynamic>> clientsCache,
   ) {
     if (selectedClientFilter == 'All') return true;
     final cn = (j['client_name'] ?? '').toString().toLowerCase();
@@ -76,7 +76,7 @@ class PilotHelpers {
   static bool matchesManualFilter(
     Map<String, dynamic> j,
     String selectedClientFilter,
-    List> clientsCache,
+    List<Map<String, dynamic>> clientsCache,
   ) {
     if (selectedClientFilter == 'All') return true;
     final cid = (j['client_id'] ?? '').toString().toLowerCase();
@@ -235,7 +235,7 @@ class PilotHelpers {
     return "${skillDisplay(jobType)} Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
-  static Future> fetchMergedDetail(Map<String, dynamic> j) async {
+  static Future<Map<String, dynamic>> fetchMergedDetail(Map<String, dynamic> j) async {
     final merged = Map<String, dynamic>.from(j);
     final hasBody = (merged['email_body'] ?? merged['body'] ?? '').toString().trim().isNotEmpty;
     final hasPhone = cleanPhone(merged['phone']).isNotEmpty;
@@ -326,7 +326,7 @@ class PilotHelpers {
     );
   }
 
-  static Future<void> exportAllEmailsPdf(String selectedClientFilter, List> clientsCache) async {
+  static Future<void> exportAllEmailsPdf(String selectedClientFilter, List<Map<String, dynamic>> clientsCache) async {
     final snap = await FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).get();
     final docs = snap.docs.where((d) => matchesClientFilter(d.data(), selectedClientFilter, clientsCache)).toList();
     final doc = pw.Document();
