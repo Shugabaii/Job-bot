@@ -36,7 +36,7 @@ class CareerPilotApp extends StatelessWidget {
           surface: Color(0xFF111827),
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF090D16),
+          backgroundColor: const Color(0xFF090D16),
           elevation: 0,
           surfaceTintColor: Colors.transparent,
         ),
@@ -72,7 +72,7 @@ class _DashboardState extends State<Dashboard> {
   String _recentEmailFilter = 'All';
   String _selectedClientFilter = 'All';
   String _activeClientId = 'user';
-  List> _clientsCache = [];
+  List<Map<String, dynamic>> _clientsCache = [];
 
   @override
   void initState() {
