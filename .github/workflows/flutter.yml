@@ -16,14 +16,20 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
+          cache: gradle
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.4'
           channel: 'stable'
+          cache: true
       - run: flutter clean
       - run: flutter pub get
-      - run: dart run flutter_launcher_icons
-      - run: flutter build apk --release --android-skip-build-dependency-validation
+      - name: Build APK with retry for 429
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "=== Build attempt $i ==="
+            flutter build apk --release --android-skip-build-dependency-validation && break || echo "Attempt $i failed, waiting 90s..." && sleep 90
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: CareerPilot-AI-APK
