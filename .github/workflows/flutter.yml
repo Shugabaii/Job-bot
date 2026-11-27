@@ -26,10 +26,20 @@ jobs:
       - run: flutter pub get
       - name: Build APK with retry for 429
         run: |
+          SUCCESS=0
           for i in 1 2 3 4 5; do
             echo "=== Build attempt $i ==="
-            flutter build apk --release --android-skip-build-dependency-validation && break || echo "Attempt $i failed, waiting 90s..." && sleep 90
+            if flutter build apk --release --android-skip-build-dependency-validation; then
+              SUCCESS=1
+              break
+            fi
+            echo "Attempt $i failed, waiting 90s..."
+            sleep 90
           done
+          if [ $SUCCESS -eq 0 ]; then
+            echo "All 5 attempts failed"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: CareerPilot-AI-APK
