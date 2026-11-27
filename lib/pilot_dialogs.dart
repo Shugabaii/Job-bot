@@ -543,7 +543,7 @@ class PilotDialogs {
     );
   }
 
-  static void showAddManual(BuildContext context, String activeClientId, List> clientsCache) {
+  static void showAddManual(BuildContext context, String activeClientId, List<Map<String, dynamic>> clientsCache) {
     final companyCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     final customSkillCtrl = TextEditingController();
@@ -672,14 +672,14 @@ class PilotDialogs {
     );
   }
 
-  static void showEmailDetail(BuildContext context, Map<String, dynamic> j, List> clientsCache) {
+  static void showEmailDetail(BuildContext context, Map<String, dynamic> j, List<Map<String, dynamic>> clientsCache) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF111827),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => FutureBuilder>(
-        future: PilotHelpers.fetchMergedDetail(j),
+      builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
+        future: Future<Map<String, dynamic>>.value(j),
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const SizedBox(height: 300, child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981), strokeWidth: 2)));
