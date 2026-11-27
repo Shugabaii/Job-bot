@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ClientsPage extends StatelessWidget {
   final String activeClientId;
-  final void Function(List>) onClientsUpdated;
+  final void Function(List<Map<String, dynamic>>) onClientsUpdated;
   final VoidCallback onUseMeHabibu;
   final VoidCallback onAddClient;
   final String Function(Map<String, dynamic>) senderEmailForClient;
@@ -347,4 +347,3 @@ class ClientsPage extends StatelessWidget {
     );
   }
 }
-
