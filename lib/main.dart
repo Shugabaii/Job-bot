@@ -61,6 +61,31 @@ class Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<Dashboard> {
+    bool _matchesManualFilter(Map<String, dynamic> m) {
+    return true;
+    }
+    Color _manualStatusColor(String st) {
+    if (st == 'done') return const Color(0xFF10B981);
+    if (st == 'failed') return const Color(0xFFEF4444);
+    return const Color(0xFFF59E0B);
+  }
+
+  String _manualStatusLabel(String st) {
+    return st;
+  }
+    void _showManualActions(String id, String company, String st) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        title: Text(company, style: const TextStyle(color: Colors.white)),
+        content: Text('Status: $st', style: const TextStyle(color: Color(0xFF9CA3AF))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
+      ),
+    );
+    }
   String filter = 'All';
   String searchQuery = '';
   int _jobsLimit = 20;
