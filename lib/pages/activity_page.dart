@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ActivityPage extends StatelessWidget {
   final String selectedClientFilter;
-  final List> clientsCache;
+  final List<Map<String, dynamic>> clientsCache;
   final String searchQuery;
   final String filter;
   final bool showReplies;
@@ -402,4 +402,3 @@ class ActivityPage extends StatelessWidget {
     );
   }
 }
-
