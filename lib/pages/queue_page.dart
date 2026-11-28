@@ -15,6 +15,36 @@ class QueuePage extends StatelessWidget {
     required this.onShowManualActions,
   });
 
+  Widget _skeletonRow() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      height: 64,
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF1F2937)),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8))),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(width: 140, height: 11, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+                const SizedBox(height: 8),
+                Container(width: 200, height: 9, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -30,17 +60,10 @@ class QueuePage extends StatelessWidget {
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(),
             builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Column(
-                  children: [
-                    SizedBox(height: 40),
-                    Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
-                    SizedBox(height: 16),
-                    Text('Loading queue...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-                  ],
-                );
+              // NO LOADING - skeleton, header stays visible
+              if (!snap.hasData) {
+                return Column(children: [_skeletonRow(), _skeletonRow(), _skeletonRow()]);
               }
-              if (!snap.hasData) return const SizedBox.shrink();
               final docs = snap.data!.docs.where((d) {
                 final m = d.data() as Map<String, dynamic>;
                 return matchesManualFilter(m);
