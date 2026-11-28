@@ -309,6 +309,19 @@ class PilotDialogs {
       builder: (ctx) => FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance.collection('bot_config').doc('settings').get(),
         builder: (ctx2, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const SizedBox(
+              height: 280,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Color(0xFF10B981)),
+                  SizedBox(height: 16),
+                  Text('Loading settings...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+                ],
+              ),
+            );
+          }
           if (snap.hasData && snap.data!.exists) {
             final d = snap.data!.data() as Map<String, dynamic>;
             maxCtrl.text = (d['max_per_day'] ?? 20).toString();
@@ -319,6 +332,7 @@ class PilotDialogs {
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx2).viewInsets.bottom, left: 20, right: 20, top: 20),
             child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -388,6 +402,7 @@ class PilotDialogs {
         builder: (ctx2, setSB) => Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx2).viewInsets.bottom, left: 20, right: 20, top: 20),
           child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -507,6 +522,7 @@ class PilotDialogs {
         backgroundColor: const Color(0xFF111827),
         title: Text('Proof - $name', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         content: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,7 +575,7 @@ class PilotDialogs {
         builder: (ctx2, setSB) => Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx2).viewInsets.bottom, left: 20, right: 20, top: 20),
           child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
+            physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -703,7 +719,7 @@ class PilotDialogs {
             expand: false,
             builder: (ctx2, scrollCtrl) => SingleChildScrollView(
               controller: scrollCtrl,
-              physics: const BouncingScrollPhysics(),
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -849,7 +865,7 @@ class PilotDialogs {
         expand: false,
         builder: (ctx2, scrollCtrl) => SingleChildScrollView(
           controller: scrollCtrl,
-          physics: const BouncingScrollPhysics(),
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
