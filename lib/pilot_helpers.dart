@@ -5,9 +5,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
+import 'app_state.dart';
 
 class PilotHelpers {
   static const String hfSpaceUrl = 'https://iharmayau-habeeb-job-bot.hf.space/';
+
+  // PROFESSIONAL: Cache merged email details - don't re-query Firestore on every tap
+  static final Map<String, Map<String, dynamic>> _detailCache = {};
 
   static const List<String> recruiterWords = [
     'recruitment', 'recruiting', 'recruiter', 'staffing', 'headhunter',
@@ -181,7 +185,6 @@ class PilotHelpers {
       if (ts is Timestamp) return ts.toDate();
       if (ts is DateTime) return ts;
       if (ts is int) {
-        // Could be seconds or milliseconds
         if (ts > 1000000000000) return DateTime.fromMillisecondsSinceEpoch(ts);
         if (ts > 1000000000) return DateTime.fromMillisecondsSinceEpoch(ts * 1000);
         return null;
@@ -189,13 +192,10 @@ class PilotHelpers {
       if (ts is double) return DateTime.fromMillisecondsSinceEpoch(ts.toInt());
       final s = ts.toString().trim();
       if (s.isEmpty) return null;
-      // Try ISO first
       var parsed = DateTime.tryParse(s);
       if (parsed != null) return parsed;
-      // Try "2026-11-28 14:30:00" with space
       parsed = DateTime.tryParse(s.replaceAll(' ', 'T'));
       if (parsed != null) return parsed;
-      // Try int as string
       final asInt = int.tryParse(s);
       if (asInt != null) {
         if (asInt > 1000000000000) return DateTime.fromMillisecondsSinceEpoch(asInt);
@@ -274,20 +274,36 @@ class PilotHelpers {
     return "${skillDisplay(jobType)} Developer for $company - Can I help your team ship faster? ($jobType)";
   }
 
+  // PROFESSIONAL: Cached + fast - don't re-query Firestore on every tap
   static Future<Map<String, dynamic>> fetchMergedDetail(Map<String, dynamic> j) async {
     final merged = Map<String, dynamic>.from(j);
     final hasBody = (merged['email_body'] ?? merged['body'] ?? '').toString().trim().isNotEmpty;
     final hasPhone = cleanPhone(merged['phone']).isNotEmpty;
     if (hasBody && hasPhone) return merged;
+
+    final company = (j['company'] ?? '').toString().trim();
+    final email = (j['email'] ?? '').toString().trim();
+    if (company.isEmpty && email.isEmpty) return merged;
+
+    // Check cache first - instant second time
+    final cacheKey = '$company|$email';
+    if (_detailCache.containsKey(cacheKey)) {
+      final cached = _detailCache[cacheKey]!;
+      if (!hasBody && (cached['email_body'] ?? '').toString().trim().isNotEmpty) merged['email_body'] = cached['email_body'];
+      if (!hasPhone && cleanPhone(cached['phone']).isNotEmpty) merged['phone'] = cleanPhone(cached['phone']);
+      if ((cached['subject'] ?? '').toString().trim().isNotEmpty) merged['subject'] = cached['subject'];
+      if ((cached['why'] ?? '').toString().trim().isNotEmpty) merged['why'] = cached['why'];
+      return merged;
+    }
+
     try {
-      final company = (j['company'] ?? '').toString();
-      final email = (j['email'] ?? '').toString();
-      if (company.isEmpty && email.isEmpty) return merged;
       final q = (company.isNotEmpty && email.isNotEmpty)
           ? await FirebaseFirestore.instance.collection('jobs_sent_details').where('company', isEqualTo: company).where('email', isEqualTo: email).limit(1).get().timeout(const Duration(seconds: 3))
           : await FirebaseFirestore.instance.collection('jobs_sent_details').where('company', isEqualTo: company).limit(1).get().timeout(const Duration(seconds: 3));
       if (q.docs.isNotEmpty) {
         final d = q.docs.first.data();
+        // Save to cache for instant next time
+        _detailCache[cacheKey] = Map<String, dynamic>.from(d);
         if (!hasBody) {
           if ((d['email_body'] ?? '').toString().trim().isNotEmpty) merged['email_body'] = d['email_body'];
           if ((d['subject'] ?? '').toString().trim().isNotEmpty) merged['subject'] = d['subject'];
@@ -295,7 +311,9 @@ class PilotHelpers {
         }
         if (!hasPhone && cleanPhone(d['phone']).isNotEmpty) merged['phone'] = cleanPhone(d['phone']);
       }
-    } catch (_) {}
+    } catch (_) {
+      // PROFESSIONAL: Never crash detail view if details collection fails - show what we have
+    }
     return merged;
   }
 
@@ -366,9 +384,17 @@ class PilotHelpers {
   }
 
   static Future<void> exportAllEmailsPdf(String selectedClientFilter, List<Map<String, dynamic>> clientsCache) async {
-    // FIX: NO orderBy - was crashing export
-    final snap = await FirebaseFirestore.instance.collection('jobs_sent').limit(200).get();
-    final docs = snap.docs.where((d) => matchesClientFilter(d.data(), selectedClientFilter, clientsCache)).toList();
+    // PROFESSIONAL: Use appState.lastJobs first - INSTANT, no Firestore fetch.
+    // Before it re-fetched 200 docs every time = slow export.
+    List<Map<String, dynamic>> allJobs;
+    if (appState.lastJobs.isNotEmpty) {
+      allJobs = appState.lastJobs;
+    } else {
+      // Fallback: Only if cache empty (first open ever), fetch from Firestore
+      final snap = await FirebaseFirestore.instance.collection('jobs_sent').limit(200).get();
+      allJobs = snap.docs.map((d) => d.data()).toList();
+    }
+    final docs = allJobs.where((j) => matchesClientFilter(j, selectedClientFilter, clientsCache)).toList();
     final doc = pw.Document();
     doc.addPage(
       pw.MultiPage(
@@ -378,8 +404,7 @@ class PilotHelpers {
           pw.SizedBox(height: 6),
           pw.Text('Total Emails: ${docs.length}', style: const pw.TextStyle(fontSize: 13)),
           pw.SizedBox(height: 16),
-          ...docs.map((d) {
-            final j = d.data();
+          ...docs.map((j) {
             final company = (j['company'] ?? 'Unknown').toString();
             final email = (j['email'] ?? '').toString();
             final phone = cleanPhone(j['phone']).isNotEmpty ? cleanPhone(j['phone']) : 'Not available';
