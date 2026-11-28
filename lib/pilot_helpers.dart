@@ -53,8 +53,17 @@ class PilotHelpers {
     return s.isEmpty ? 'client_${DateTime.now().millisecondsSinceEpoch}' : s;
   }
 
-  static String clientDisplayName(Map<String, dynamic> j) =>
-      (j['name'] ?? j['client_name'] ?? 'Unknown').toString();
+  // FIX: jobs_sent has client_name, not name. Check client_name first.
+  static String clientDisplayName(Map<String, dynamic> j) {
+    final cn = (j['client_name'] ?? '').toString().trim();
+    if (cn.isNotEmpty) return cn;
+    final n = (j['name'] ?? '').toString().trim();
+    if (n.isNotEmpty) return n;
+    final cid = (j['client_id'] ?? '').toString().trim();
+    if (cid == 'user') return 'Habibu Armayau Isah';
+    if (cid.isNotEmpty) return cid;
+    return 'Unknown';
+  }
 
   static String senderEmailForClient(Map<String, dynamic> c) =>
       (c['email'] ?? c['gmail'] ?? c['gmail_email'] ?? '').toString().trim();
@@ -68,10 +77,7 @@ class PilotHelpers {
     final cn = (j['client_name'] ?? '').toString().toLowerCase();
     final cid = (j['client_id'] ?? '').toString().toLowerCase();
     final f = selectedClientFilter.toLowerCase();
-    // FIX: If clients haven't loaded yet, don't hide everything.
-    // Return true until cache loads, so Overview doesn't flash 0.
     if (clientsCache.isEmpty) return true;
-    // Direct match first - works even if cache is out of date
     if (cid == f || cn == f) return true;
     final match = clientsCache.where((c) => (c['id'] ?? '').toString().toLowerCase() == f).toList();
     if (match.isEmpty) return false;
@@ -89,7 +95,6 @@ class PilotHelpers {
     final cn = (j['client_name'] ?? '').toString().toLowerCase();
     final f = selectedClientFilter.toLowerCase();
     if (cid == f || cn == f) return true;
-    // FIX: Same - don't hide queue items while clients are still loading
     if (clientsCache.isEmpty) return true;
     final match = clientsCache.where((c) => (c['id'] ?? '').toString().toLowerCase() == f).toList();
     return match.isNotEmpty && cn == (match.first['name'] ?? '').toString().toLowerCase();
@@ -151,7 +156,7 @@ class PilotHelpers {
       final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!launched && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open WhatsApp.'), backgroundColor: Colors.red));
     } catch (_) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error launching WhatsApp.'), backgroundColor: Colors.red));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error launching WhatsApp.'), backgroundColor: Colors.red));
     }
   }
 
@@ -219,7 +224,8 @@ class PilotHelpers {
     final jobType = (j['job_type'] ?? j['skill'] ?? 'FLUTTER').toString();
     final why = (j['why'] ?? j['reason'] ?? '').toString().trim();
     final clientType = (j['client_type'] ?? '').toString();
-    final clientName = (j['client_name'] ?? 'Habeeb').toString();
+    // FIX: Use real client name, not hardcoded Habeeb for every client
+    final clientName = (j['client_name'] ?? j['name'] ?? 'Habeeb Armaya\'u').toString().trim().isEmpty ? 'Habeeb Armaya\'u' : (j['client_name'] ?? j['name'] ?? 'Habeeb Armaya\'u').toString();
     final proofUsed = (j['proof_used'] ?? j['project_1'] ?? '').toString().trim();
     if (clientType == 'job_seeker') {
       final job = (j['job_wanted'] ?? j['job'] ?? jobType).toString();
@@ -228,7 +234,7 @@ class PilotHelpers {
     final skillDisp = skillDisplay(jobType);
     final roleLine = roleLineForSkill(jobType);
     final whyLine = why.isNotEmpty ? why : "I came across $company and liked what you're building - I help teams with $skillDisp, and I can support your team with that.";
-    return "Hi $company Team,\n\n$whyLine\n\nI'm Habeeb Armaya'u, a Software Engineer. I help teams with $roleLine, dashboards and automation for teams building that kind of product.\n\nI would love to help $company ship faster - whether it's $skillDisp, a mobile app, dashboard, or internal tool.\n\nWould you be open to a quick 10-minute call this week to see if I can help?\n\nBest regards,\nHabeeb Armaya'u\nSoftware Engineer\n$skillDisp Developer";
+    return "Hi $company Team,\n\n$whyLine\n\nI'm $clientName, a Software Engineer. I help teams with $roleLine, dashboards and automation for teams building that kind of product.\n\nI would love to help $company ship faster - whether it's $skillDisp, a mobile app, dashboard, or internal tool.\n\nWould you be open to a quick 10-minute call this week to see if I can help?\n\nBest regards,\n$clientName\nSoftware Engineer\n$skillDisp Developer";
   }
 
   static String buildSubject(Map<String, dynamic> j) {
@@ -253,8 +259,8 @@ class PilotHelpers {
       final email = (j['email'] ?? '').toString();
       if (company.isEmpty && email.isEmpty) return merged;
       final q = (company.isNotEmpty && email.isNotEmpty)
-          ? await FirebaseFirestore.instance.collection('jobs_sent_details').where('company', isEqualTo: company).where('email', isEqualTo: email).limit(1).get()
-          : await FirebaseFirestore.instance.collection('jobs_sent_details').where('company', isEqualTo: company).limit(1).get();
+          ? await FirebaseFirestore.instance.collection('jobs_sent_details').where('company', isEqualTo: company).where('email', isEqualTo: email).limit(1).get().timeout(const Duration(seconds: 3))
+          : await FirebaseFirestore.instance.collection('jobs_sent_details').where('company', isEqualTo: company).limit(1).get().timeout(const Duration(seconds: 3));
       if (q.docs.isNotEmpty) {
         final d = q.docs.first.data();
         if (!hasBody) {
@@ -335,7 +341,7 @@ class PilotHelpers {
   }
 
   static Future<void> exportAllEmailsPdf(String selectedClientFilter, List<Map<String, dynamic>> clientsCache) async {
-    final snap = await FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).get();
+    final snap = await FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(200).get();
     final docs = snap.docs.where((d) => matchesClientFilter(d.data(), selectedClientFilter, clientsCache)).toList();
     final doc = pw.Document();
     doc.addPage(
