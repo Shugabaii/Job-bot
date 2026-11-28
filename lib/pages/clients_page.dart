@@ -33,6 +33,73 @@ class ClientsPage extends StatelessWidget {
     required this.onEditProof,
   });
 
+  Widget _skeletonCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      height: 180,
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF1F2937)),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8))),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(width: 140, height: 12, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+                    const SizedBox(height: 8),
+                    Container(width: 200, height: 10, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(width: double.infinity, height: 32, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8))),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: Container(height: 32, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8)))),
+              const SizedBox(width: 8),
+              Expanded(child: Container(height: 32, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8)))),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _header() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text('Clients', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: onUseMeHabibu,
+              icon: const Icon(Icons.person_outline, size: 16, color: Color(0xFF3B82F6)),
+              label: const Text('Use my profile', style: TextStyle(color: Color(0xFF60A5FA), fontWeight: FontWeight.w600, fontSize: 12)),
+            ),
+            TextButton.icon(
+              onPressed: onAddClient,
+              icon: const Icon(Icons.person_add_outlined, size: 16, color: Color(0xFF10B981)),
+              label: const Text('Add Client', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -41,15 +108,16 @@ class ClientsPage extends StatelessWidget {
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('clients').snapshots(),
         builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Column(
+          // NO LOADING - show header + skeleton immediately
+          if (!snap.hasData) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Clients', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
-                SizedBox(height: 40),
-                Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
-                SizedBox(height: 16),
-                Center(child: Text('Loading clients...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12))),
+                _header(),
+                const SizedBox(height: 6),
+                _skeletonCard(),
+                _skeletonCard(),
+                _skeletonCard(),
               ],
             );
           }
@@ -64,31 +132,15 @@ class ClientsPage extends StatelessWidget {
             if ((b['id'] ?? '') == 'user') return 1;
             return 0;
           });
-          WidgetsBinding.instance.addPostFrameCallback((_) => onClientsUpdated(clients));
+          // FIX: Only notify parent when we actually have data, never with empty on first load
+          if (clients.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) => onClientsUpdated(clients));
+          }
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Clients', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
-                  Row(
-                    children: [
-                      TextButton.icon(
-                        onPressed: onUseMeHabibu,
-                        icon: const Icon(Icons.person_outline, size: 16, color: Color(0xFF3B82F6)),
-                        label: const Text('Use my profile', style: TextStyle(color: Color(0xFF60A5FA), fontWeight: FontWeight.w600, fontSize: 12)),
-                      ),
-                      TextButton.icon(
-                        onPressed: onAddClient,
-                        icon: const Icon(Icons.person_add_outlined, size: 16, color: Color(0xFF10B981)),
-                        label: const Text('Add Client', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w600)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              _header(),
               const SizedBox(height: 6),
               if (clients.isEmpty)
                 const Card(
@@ -97,9 +149,9 @@ class ClientsPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Habibu Armayau Isah - Freelancer - Flutter + AI', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                        Text('No clients yet', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                         SizedBox(height: 4),
-                        Text('Setting up your profile...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+                        Text('Tap Add Client to add your first client.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
                       ],
                     ),
                   ),
