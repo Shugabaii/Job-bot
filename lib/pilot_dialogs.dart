@@ -51,7 +51,6 @@ class PilotDialogs {
     );
   }
 
-  // SKELETON for dialogs - no spinner
   static Widget _skeletonField() {
     return Container(
       height: 48,
@@ -338,7 +337,6 @@ class PilotDialogs {
       builder: (ctx) => FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance.collection('bot_config').doc('settings').get(),
         builder: (ctx2, snap) {
-          // NO LOADING - show form with defaults immediately, fill in when data arrives
           if (snap.hasData && snap.data!.exists && !loaded) {
             loaded = true;
             final d = snap.data!.data() as Map<String, dynamic>;
@@ -715,7 +713,6 @@ class PilotDialogs {
       builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
         future: PilotHelpers.fetchMergedDetail(j),
         builder: (ctx, snap) {
-          // NO SPINNER - show instant preview from `j`, upgrade to merged when ready
           final merged = snap.data ?? j;
           final company = (merged['company'] ?? 'Unknown').toString();
           final email = (merged['email'] ?? '').toString();
@@ -916,7 +913,8 @@ class PilotDialogs {
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       onPressed: () => PilotHelpers.exportSingleEmailPdf(r),
-                      icon: const Icon(Icons.picture_as_pdf, color: Colors.white, fontSize: 16),
+                      // FIXED: was fontSize: 16, Icon uses size
+                      icon: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 16),
                       label: const Text('PDF Report', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
                     ),
                   ),
