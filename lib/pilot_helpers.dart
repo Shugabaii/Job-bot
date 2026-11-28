@@ -68,8 +68,14 @@ class PilotHelpers {
     final cn = (j['client_name'] ?? '').toString().toLowerCase();
     final cid = (j['client_id'] ?? '').toString().toLowerCase();
     final f = selectedClientFilter.toLowerCase();
+    // FIX: If clients haven't loaded yet, don't hide everything.
+    // Return true until cache loads, so Overview doesn't flash 0.
+    if (clientsCache.isEmpty) return true;
+    // Direct match first - works even if cache is out of date
+    if (cid == f || cn == f) return true;
     final match = clientsCache.where((c) => (c['id'] ?? '').toString().toLowerCase() == f).toList();
-    final name = match.isNotEmpty ? (match.first['name'] ?? '').toString().toLowerCase() : f;
+    if (match.isEmpty) return false;
+    final name = (match.first['name'] ?? '').toString().toLowerCase();
     return cn == name || cid == f || cn == f;
   }
 
@@ -83,6 +89,8 @@ class PilotHelpers {
     final cn = (j['client_name'] ?? '').toString().toLowerCase();
     final f = selectedClientFilter.toLowerCase();
     if (cid == f || cn == f) return true;
+    // FIX: Same - don't hide queue items while clients are still loading
+    if (clientsCache.isEmpty) return true;
     final match = clientsCache.where((c) => (c['id'] ?? '').toString().toLowerCase() == f).toList();
     return match.isNotEmpty && cn == (match.first['name'] ?? '').toString().toLowerCase();
   }
