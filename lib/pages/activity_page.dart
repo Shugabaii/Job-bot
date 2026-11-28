@@ -86,6 +86,16 @@ class ActivityPage extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('jobs_replies').orderBy('timestamp', descending: true).limit(20).snapshots(),
       builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Column(
+            children: [
+              SizedBox(height: 20),
+              Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
+              SizedBox(height: 12),
+              Text('Loading replies...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+            ],
+          );
+        }
         if (!snap.hasData) return const SizedBox.shrink();
         final docs = snap.data!.docs.where((d) {
           final r = d.data() as Map<String, dynamic>;
@@ -178,7 +188,7 @@ class ActivityPage extends StatelessWidget {
     final validClientFilter = clientFilterItems.any((item) => item.value == selectedClientFilter) ? selectedClientFilter : 'All';
 
     return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,6 +284,16 @@ class ActivityPage extends StatelessWidget {
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(jobsLimit).snapshots(),
               builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Column(
+                    children: [
+                      SizedBox(height: 20),
+                      Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
+                      SizedBox(height: 12),
+                      Text('Loading emails...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+                    ],
+                  );
+                }
                 if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)));
                 final docs = snap.data!.docs.where((d) {
                   final m = d.data() as Map<String, dynamic>;
@@ -355,6 +375,16 @@ class ActivityPage extends StatelessWidget {
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('jobs_followups').orderBy('timestamp', descending: true).limit(followupsLimit).snapshots(),
               builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Column(
+                    children: [
+                      SizedBox(height: 20),
+                      Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
+                      SizedBox(height: 12),
+                      Text('Loading follow-ups...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+                    ],
+                  );
+                }
                 if (!snap.hasData) return const SizedBox.shrink();
                 final docs = snap.data!.docs.where((d) {
                   final m = d.data() as Map<String, dynamic>;
