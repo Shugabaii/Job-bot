@@ -20,9 +20,6 @@ class QueuePage extends StatefulWidget {
 }
 
 class _QueuePageState extends State<QueuePage> {
-  // FIX: Keep last data - show instantly, never skeleton
-  List<QueryDocumentSnapshot>? _lastDocs;
-
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -36,15 +33,19 @@ class _QueuePageState extends State<QueuePage> {
           const Text('Long-press an item to Retry or Delete.', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
           const SizedBox(height: 10),
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(includeMetadataChanges: true),
+            // FIX: NO orderBy, NO includeMetadataChanges - reads directly from Firebase
+            stream: FirebaseFirestore.instance.collection('pending_jobs').limit(50).snapshots(),
             builder: (context, snap) {
-              if (snap.hasData) _lastDocs = snap.data!.docs;
-              // First open with no cache yet: show nothing, not skeleton
-              if (!snap.hasData && _lastDocs == null) return const SizedBox.shrink();
-              final allDocs = _lastDocs ?? [];
+              if (snap.hasError) {
+                return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12))));
+              }
+              if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+                return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))));
+              }
+              final allDocs = snap.data?.docs ?? [];
               final docs = allDocs.where((d) {
                 final m = d.data() as Map<String, dynamic>;
-                return widget.matchesManualFilter(m);
+                try { return widget.matchesManualFilter(m); } catch (_) { return true; }
               }).toList();
               if (docs.isEmpty) {
                 return const Card(
