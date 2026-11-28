@@ -117,6 +117,15 @@ class OverviewPage extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('jobs_replies').snapshots(),
       builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return Row(
+            children: [
+              _metric('Replies', '...', Icons.mark_email_read_outlined, 'Loading...'),
+              const SizedBox(width: 12),
+              _metric('Reply Rate', '...', Icons.trending_up, 'Loading...'),
+            ],
+          );
+        }
         final all = snap.data?.docs ?? [];
         final filtered = all.where((d) => matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
         final replies = filtered.length;
@@ -196,6 +205,17 @@ class OverviewPage extends StatelessWidget {
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).snapshots(),
                   builder: (context, sentSnap) {
+                    if (sentSnap.connectionState == ConnectionState.waiting) {
+                      return const Column(
+                        children: [
+                          SizedBox(height: 60),
+                          Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
+                          SizedBox(height: 16),
+                          Text('Loading your emails...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+                          SizedBox(height: 20),
+                        ],
+                      );
+                    }
                     final allDocs = sentSnap.data?.docs ?? [];
                     final filtered = allDocs.where((d) {
                       final m = d.data() as Map<String, dynamic>;
