@@ -60,11 +60,6 @@ class ActivityPage extends StatefulWidget {
 }
 
 class _ActivityPageState extends State<ActivityPage> {
-  // FIX: Keep last data - show instantly, never skeleton
-  List<QueryDocumentSnapshot>? _lastReplies;
-  List<QueryDocumentSnapshot>? _lastRecent;
-  List<QueryDocumentSnapshot>? _lastFollowups;
-
   Widget _collapsibleHeader(String title, bool expanded, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -92,17 +87,26 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
+  // FIX: Safe filter - if filter crashes, don't hide all data
+  bool _safeFilter(Map<String, dynamic> m) {
+    try { return widget.matchesClientFilter(m); } catch (_) { return true; }
+  }
+
   Widget _repliesList() {
+    // FIX: NO orderBy, NO includeMetadataChanges - reads directly from Firebase
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('jobs_replies').orderBy('timestamp', descending: true).limit(20).snapshots(includeMetadataChanges: true),
+      stream: FirebaseFirestore.instance.collection('jobs_replies').limit(50).snapshots(),
       builder: (context, snap) {
-        if (snap.hasData) _lastReplies = snap.data!.docs;
-        final allDocs = _lastReplies ?? [];
-        // Still loading first time and no cache yet: show nothing, not skeleton
-        if (!snap.hasData && _lastReplies == null) return const SizedBox.shrink();
+        if (snap.hasError) {
+          return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12))));
+        }
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))));
+        }
+        final allDocs = snap.data?.docs ?? [];
         final docs = allDocs.where((d) {
           final r = d.data() as Map<String, dynamic>;
-          return widget.matchesClientFilter(r);
+          return _safeFilter(r);
         }).toList();
         if (docs.isEmpty) {
           return Card(
@@ -285,14 +289,19 @@ class _ActivityPageState extends State<ActivityPage> {
             ),
             const SizedBox(height: 10),
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(widget.jobsLimit).snapshots(includeMetadataChanges: true),
+              // FIX: NO orderBy, NO includeMetadataChanges
+              stream: FirebaseFirestore.instance.collection('jobs_sent').limit(widget.jobsLimit).snapshots(),
               builder: (context, snap) {
-                if (snap.hasData) _lastRecent = snap.data!.docs;
-                if (!snap.hasData && _lastRecent == null) return const SizedBox.shrink();
-                final allDocs = _lastRecent ?? [];
+                if (snap.hasError) {
+                  return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12))));
+                }
+                if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+                  return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))));
+                }
+                final allDocs = snap.data?.docs ?? [];
                 final docs = allDocs.where((d) {
                   final m = d.data() as Map<String, dynamic>;
-                  if (!widget.matchesClientFilter(m)) return false;
+                  if (!_safeFilter(m)) return false;
                   if (widget.filter == 'Sent') {
                     final st = (m['status'] ?? 'sent').toString().toLowerCase();
                     if (st.contains('follow')) return false;
@@ -336,6 +345,8 @@ class _ActivityPageState extends State<ActivityPage> {
                       final company = (m['company'] ?? 'Unknown').toString();
                       final email = (m['email'] ?? '').toString();
                       final cname = widget.clientDisplayName(m);
+                      // FIX: Try all date fields, don't crash if timestamp missing
+                      final dateVal = m['timestamp'] ?? m['date'] ?? m['sent_at'] ?? m['created_at'] ?? '';
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
@@ -352,7 +363,7 @@ class _ActivityPageState extends State<ActivityPage> {
                             child: const Icon(Icons.mail_outline, color: Color(0xFF34D399), size: 16),
                           ),
                           title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text('$email - $cname - ${widget.formatDate(m['timestamp'])}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text('$email - $cname - ${widget.formatDate(dateVal)}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)), maxLines: 1, overflow: TextOverflow.ellipsis),
                           trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
                         ),
                       );
@@ -368,14 +379,19 @@ class _ActivityPageState extends State<ActivityPage> {
           if (widget.showFollowups) ...[
             const SizedBox(height: 10),
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('jobs_followups').orderBy('timestamp', descending: true).limit(widget.followupsLimit).snapshots(includeMetadataChanges: true),
+              // FIX: NO orderBy, NO includeMetadataChanges
+              stream: FirebaseFirestore.instance.collection('jobs_followups').limit(widget.followupsLimit).snapshots(),
               builder: (context, snap) {
-                if (snap.hasData) _lastFollowups = snap.data!.docs;
-                if (!snap.hasData && _lastFollowups == null) return const SizedBox.shrink();
-                final allDocs = _lastFollowups ?? [];
+                if (snap.hasError) {
+                  return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12))));
+                }
+                if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+                  return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))));
+                }
+                final allDocs = snap.data?.docs ?? [];
                 final docs = allDocs.where((d) {
                   final m = d.data() as Map<String, dynamic>;
-                  return widget.matchesClientFilter(m);
+                  return _safeFilter(m);
                 }).toList();
                 if (docs.isEmpty) {
                   return const Card(
