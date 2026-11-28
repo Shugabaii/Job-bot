@@ -14,10 +14,12 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    // FIX: Read from FIREBASE SERVER, not phone cache.
-    // Cache was showing old 0 data and freezing the app.
+    // PROFESSIONAL: Cache first for instant feel, then sync from server in background.
+    // Like Gmail / WhatsApp. Never show 0, never show blank spinner.
+    // The old persistenceEnabled: false made app slow - spinner every open.
     FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: false,
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
   } catch (e) {
     debugPrint('Firebase init error: $e');
@@ -85,10 +87,61 @@ class _DashboardState extends State<Dashboard> {
   @override
   void initState() {
     super.initState();
+    // PROFESSIONAL: Start ONE global listener for jobs - fills appState.lastJobs
+    // All pages then show instantly from cache, no duplicate listeners, no 0-flash
+    _startGlobalJobsListener();
+    _startGlobalClientsListener();
     // FIX: Don't block UI - run in background, don't await
     Future.microtask(() async {
       await _ensureDefaultUser();
       await _loadActiveClient();
+    });
+  }
+
+  // PROFESSIONAL: One listener for whole app, not one per page
+  void _startGlobalJobsListener() {
+    appState.setSyncing(true);
+    FirebaseFirestore.instance.collection('jobs_sent').snapshots().listen(
+      (snap) {
+        // Don't show 0 while syncing - appState.setJobs protects empty-overwrite
+        final jobs = snap.docs.map((d) {
+          final m = d.data();
+          m['id'] = d.id;
+          return m;
+        }).toList();
+        // Sort in Dart - safe, no Firestore index crash
+        jobs.sort((a, b) {
+          final ta = PilotHelpers.parseDate(a['timestamp'] ?? a['sent_at'] ?? a['created_at']);
+          final tb = PilotHelpers.parseDate(b['timestamp'] ?? b['sent_at'] ?? b['created_at']);
+          if (ta == null && tb == null) return 0;
+          if (ta == null) return 1;
+          if (tb == null) return -1;
+          return tb.compareTo(ta);
+        });
+        appState.setJobs(jobs);
+        appState.setSyncing(false);
+      },
+      onError: (e) {
+        debugPrint('Global jobs listener error: $e');
+        appState.setError(e.toString());
+      },
+    );
+  }
+
+  void _startGlobalClientsListener() {
+    FirebaseFirestore.instance.collection('clients').snapshots().listen((snap) {
+      final clients = snap.docs.map((d) {
+        final m = d.data();
+        m['id'] = d.id;
+        return m;
+      }).toList();
+      clients.sort((a, b) {
+        if ((a['id'] ?? '') == 'user') return -1;
+        if ((b['id'] ?? '') == 'user') return 1;
+        return 0;
+      });
+      if (mounted) setState(() => _clientsCache = clients);
+      appState.setClients(clients);
     });
   }
 
@@ -100,16 +153,14 @@ class _DashboardState extends State<Dashboard> {
     appState.jobsLimit = _jobsLimit;
     appState.followupsLimit = _followupsLimit;
     // Don't call notifyListeners here - setState already rebuilds Dashboard
-    // Pages that listen to appState directly will get it via Dashboard rebuild
   }
 
   Future<void> _ensureDefaultUser() async {
     try {
       final ref = FirebaseFirestore.instance.collection('clients').doc('user');
-      // FIX: Always read from SERVER (Firebase), never from phone cache
-      DocumentSnapshot doc = await ref
-          .get(const GetOptions(source: Source.server))
-          .timeout(const Duration(seconds: 10));
+      // PROFESSIONAL: Cache first, server syncs in background. No 10s block.
+      // Old Source.server forced 10s wait every open.
+      DocumentSnapshot doc = await ref.get().timeout(const Duration(seconds: 10));
       if (!doc.exists) {
         await ref.set({
           'name': 'Habibu Armayau Isah',
@@ -154,7 +205,6 @@ class _DashboardState extends State<Dashboard> {
   }
 
   String get _activeClientDisplayName {
-    // Use appState helper - same logic everywhere
     if (_activeClientId == 'user') return 'Habibu Armayau Isah';
     final match = _clientsCache.where((c) => (c['id'] ?? '').toString() == _activeClientId).toList();
     if (match.isNotEmpty) {
@@ -166,11 +216,11 @@ class _DashboardState extends State<Dashboard> {
 
   Future<void> _loadActiveClient() async {
     try {
-      // FIX: Read from SERVER, not cache
+      // PROFESSIONAL: Cache first, no server block
       final doc = await FirebaseFirestore.instance
           .collection('bot_config')
           .doc('active')
-          .get(const GetOptions(source: Source.server))
+          .get()
           .timeout(const Duration(seconds: 10));
       if (mounted) {
         setState(() {
@@ -197,7 +247,6 @@ class _DashboardState extends State<Dashboard> {
           _activeClientId = clientId;
           _syncToAppState();
         });
-        // Also notify any page listening directly to appState
         appState.setActiveClient(clientId);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Active client updated to $clientId.'), backgroundColor: const Color(0xFF10B981)));
       }
@@ -332,11 +381,9 @@ class _DashboardState extends State<Dashboard> {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: Listen to appState too - if a page changes filter, Dashboard rebuilds with same filter
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
-        // If appState was changed from a page, sync it back to local so pages get same value
         if (appState.selectedClientFilter != _selectedClientFilter) {
           _selectedClientFilter = appState.selectedClientFilter;
         }
@@ -366,7 +413,6 @@ class _DashboardState extends State<Dashboard> {
                 _clientsCache = clients;
                 _syncToAppState();
               });
-              // Push to shared brain so Overview/Activity see same clients instantly
               appState.setClients(clients);
             },
             onUseMeHabibu: _useMeHabibu,
@@ -444,12 +490,21 @@ class _DashboardState extends State<Dashboard> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('CareerPilot AI', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
-                    SizedBox(height: 1),
-                    Text("Habeeb Armaya'u - Software Engineer", style: TextStyle(fontSize: 9, color: Color(0xFF9CA3AF))),
+                    const Text('CareerPilot AI', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.2)),
+                    const SizedBox(height: 1),
+                    // PROFESSIONAL: Show sync status like Gmail - not just "Connected"
+                    Row(
+                      children: [
+                        Text("Habeeb Armaya'u - Software Engineer", style: const TextStyle(fontSize: 9, color: Color(0xFF9CA3AF))),
+                        if (appState.isSyncing) ...[
+                          const SizedBox(width: 6),
+                          const SizedBox(width: 8, height: 8, child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF10B981))),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ],
@@ -464,7 +519,12 @@ class _DashboardState extends State<Dashboard> {
                 margin: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(color: const Color(0xFF064E3B).withValues(alpha: 0.6), borderRadius: BorderRadius.circular(100), border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3))),
-                child: const Row(children: [Icon(Icons.circle, size: 6, color: Color(0xFF10B981)), SizedBox(width: 6), Text('Connected', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF34D399)))]),
+                child: Row(children: [
+                  Icon(Icons.circle, size: 6, color: const Color(0xFF10B981)),
+                  const SizedBox(width: 6),
+                  // PROFESSIONAL: Syncing / Updated just now instead of static Connected
+                  Text(appState.isSyncing ? 'Syncing...' : appState.lastSyncLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF34D399))),
+                ]),
               ),
             ],
             bottom: const PreferredSize(preferredSize: Size.fromHeight(1), child: Divider(height: 1, color: Color(0xFF1F2937))),
@@ -477,7 +537,6 @@ class _DashboardState extends State<Dashboard> {
                   label: const Text('Send Manually', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 )
               : null,
-          // FIX: Only show the current page - before IndexedStack loaded all 4 pages at once from Firebase = freeze
           body: pages[_currentIndex],
           bottomNavigationBar: NavigationBar(
             selectedIndex: _currentIndex,
