@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../app_state.dart';
 
 class ActivityPage extends StatefulWidget {
   final String selectedClientFilter;
@@ -92,16 +93,26 @@ class _ActivityPageState extends State<ActivityPage> {
     try { return widget.matchesClientFilter(m); } catch (_) { return true; }
   }
 
+  Widget _skeletonList() {
+    return Column(
+      children: List.generate(3, (i) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        height: 60,
+        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12)),
+      )),
+    );
+  }
+
   Widget _repliesList() {
-    // FIX: NO orderBy, NO includeMetadataChanges - reads directly from Firebase
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('jobs_replies').limit(50).snapshots(),
       builder: (context, snap) {
         if (snap.hasError) {
           return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12))));
         }
+        // PROFESSIONAL: Don't show spinner if we are syncing - show skeleton, not 0
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))));
+          return _skeletonList();
         }
         final allDocs = snap.data?.docs ?? [];
         final docs = allDocs.where((d) {
@@ -186,252 +197,299 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
+  // PROFESSIONAL: Recent Emails from appState.lastJobs - INSTANT, no StreamBuilder
+  Widget _recentEmailsList() {
+    // First open ever, no cache - show skeleton, not 0, not spinner
+    if (!appState.hasLoadedJobs && appState.lastJobs.isEmpty) {
+      return Column(children: [ _skeletonList(), const SizedBox(height: 8), const Text('Loading your emails...', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))) ]);
+    }
+
+    final allMaps = appState.lastJobs;
+    final filtered = allMaps.where((m) {
+      if (!_safeFilter(m)) return false;
+      if (widget.filter == 'Sent') {
+        final st = (m['status'] ?? 'sent').toString().toLowerCase();
+        if (st.contains('follow')) return false;
+      } else if (widget.filter == 'Follow-up') {
+        final st = (m['status'] ?? '').toString().toLowerCase();
+        if (!st.contains('follow') && m['has_followup'] != true) return false;
+      }
+      if (widget.searchQuery.isNotEmpty) {
+        final comp = (m['company'] ?? '').toString().toLowerCase();
+        final em = (m['email'] ?? '').toString().toLowerCase();
+        if (!comp.contains(widget.searchQuery) && !em.contains(widget.searchQuery)) return false;
+      }
+      if (widget.recentEmailFilter == 'Replied') {
+        final rs = (m['reply_status'] ?? m['status'] ?? '').toString().toLowerCase();
+        if (rs != 'replied' && rs != 'reply' && m['has_reply'] != true) return false;
+      }
+      if (widget.recentEmailFilter == 'No Reply') {
+        final rs = (m['reply_status'] ?? m['status'] ?? '').toString().toLowerCase();
+        if (rs == 'replied' || m['has_reply'] == true) return false;
+      }
+      return true;
+    }).take(widget.jobsLimit).toList();
+
+    if (filtered.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: Text(
+              widget.searchQuery.isEmpty ? 'No emails yet. The bot will start sending soon.' : 'No match for "${widget.searchQuery}"',
+              style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        ...filtered.map((m) {
+          final company = (m['company'] ?? 'Unknown').toString();
+          final email = (m['email'] ?? '').toString();
+          final cname = widget.clientDisplayName(m);
+          final dateVal = m['timestamp'] ?? m['date'] ?? m['sent_at'] ?? m['created_at'] ?? '';
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF111827),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF1F2937)),
+            ),
+            child: ListTile(
+              onTap: () => widget.onShowEmailDetail(m),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.mail_outline, color: Color(0xFF34D399), size: 16),
+              ),
+              title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('$email - $cname - ${widget.formatDate(dateVal)}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)), maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+            ),
+          );
+        }),
+        TextButton(onPressed: widget.onLoadMoreJobs, child: const Text('Load More', style: TextStyle(color: Color(0xFF10B981)))),
+      ],
+    );
+  }
+
+  Widget _followupsList() {
+    // PROFESSIONAL: Use cache if we have it, else stream
+    if (appState.lastFollowups.isNotEmpty) {
+      final docs = appState.lastFollowups.where((m) => _safeFilter(m)).take(widget.followupsLimit).toList();
+      if (docs.isEmpty) {
+        return const Card(child: Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No follow-ups yet.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)))));
+      }
+      return Column(
+        children: docs.map((m) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1F2937))),
+            child: ListTile(
+              onTap: () => widget.onShowFollowupDetail(m),
+              leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.reply_outlined, color: Color(0xFFF59E0B), size: 16)),
+              title: Text((m['company'] ?? 'Unknown').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
+              subtitle: Text((m['email'] ?? '').toString(), style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+              trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+            ),
+          );
+        }).toList(),
+      );
+    }
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('jobs_followups').limit(widget.followupsLimit).snapshots(),
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12))));
+        }
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return _skeletonList();
+        }
+        final allDocs = snap.data?.docs ?? [];
+        final docs = allDocs.where((d) {
+          final m = d.data() as Map<String, dynamic>;
+          return _safeFilter(m);
+        }).toList();
+        // Save to cache for instant next time
+        if (docs.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            appState.setFollowups(docs.map((d) => d.data() as Map<String, dynamic>).toList());
+          });
+        }
+        if (docs.isEmpty) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: Text('No follow-ups yet.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12))),
+            ),
+          );
+        }
+        return Column(
+          children: docs.map((d) {
+            final m = d.data() as Map<String, dynamic>;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF1F2937)),
+              ),
+              child: ListTile(
+                onTap: () => widget.onShowFollowupDetail(m),
+                leading: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.reply_outlined, color: Color(0xFFF59E0B), size: 16),
+                ),
+                title: Text((m['company'] ?? 'Unknown').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
+                subtitle: Text((m['email'] ?? '').toString(), style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final clientFilterItems = <DropdownMenuItem<String>>[
-      const DropdownMenuItem(value: 'All', child: Text('All Clients')),
-      ...widget.clientsCache.map((c) => DropdownMenuItem(value: (c['id'] ?? '').toString(), child: Text((c['name'] ?? '').toString()))),
-    ];
-    final validClientFilter = clientFilterItems.any((item) => item.value == widget.selectedClientFilter) ? widget.selectedClientFilter : 'All';
+    // PROFESSIONAL: Listen to appState - when main.dart syncs new jobs, Activity updates instantly, no extra Firestore call
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        final clientFilterItems = <DropdownMenuItem<String>>[
+          const DropdownMenuItem(value: 'All', child: Text('All Clients')),
+          ...widget.clientsCache.map((c) => DropdownMenuItem(value: (c['id'] ?? '').toString(), child: Text((c['name'] ?? '').toString()))),
+        ];
+        final validClientFilter = clientFilterItems.any((item) => item.value == widget.selectedClientFilter) ? widget.selectedClientFilter : 'All';
 
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Client Filter', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF111827),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF1F2937)),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: validClientFilter,
-                      dropdownColor: const Color(0xFF111827),
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                      isExpanded: true,
-                      items: clientFilterItems,
-                      onChanged: (v) => widget.onClientFilterChanged(v ?? 'All'),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Search company...',
-                    hintStyle: const TextStyle(color: Color(0xFF6B7280)),
-                    filled: true,
-                    fillColor: const Color(0xFF111827),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
-                    prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280), size: 18),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
-                  onChanged: (v) => widget.onSearchChanged(v.toLowerCase()),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF111827),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF1F2937)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: widget.filter,
-                    dropdownColor: const Color(0xFF111827),
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                    items: ['All', 'Sent', 'Follow-up'].map((f) => DropdownMenuItem(value: f, child: Text(f))).toList(),
-                    onChanged: (v) => widget.onFilterChanged(v ?? 'All'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _collapsibleHeader('Replies', widget.showReplies, widget.onToggleReplies),
-          if (widget.showReplies) ...[
-            const SizedBox(height: 10),
-            _repliesList(),
-          ],
-          const SizedBox(height: 24),
-          _collapsibleHeader('Recent Emails', widget.showRecentEmails, widget.onToggleRecentEmails),
-          if (widget.showRecentEmails) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              children: ['All', 'Replied', 'No Reply'].map((f) {
-                final sel = widget.recentEmailFilter == f;
-                return ChoiceChip(
-                  label: Text(f, style: TextStyle(color: sel ? Colors.white : const Color(0xFF9CA3AF), fontSize: 12)),
-                  selected: sel,
-                  selectedColor: const Color(0xFF10B981),
-                  backgroundColor: const Color(0xFF1F2937),
-                  onSelected: (_) => widget.onRecentEmailFilterChanged(f),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 10),
-            StreamBuilder<QuerySnapshot>(
-              // FIX: NO orderBy, NO includeMetadataChanges
-              stream: FirebaseFirestore.instance.collection('jobs_sent').limit(widget.jobsLimit).snapshots(),
-              builder: (context, snap) {
-                if (snap.hasError) {
-                  return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12))));
-                }
-                if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-                  return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))));
-                }
-                final allDocs = snap.data?.docs ?? [];
-                final docs = allDocs.where((d) {
-                  final m = d.data() as Map<String, dynamic>;
-                  if (!_safeFilter(m)) return false;
-                  if (widget.filter == 'Sent') {
-                    final st = (m['status'] ?? 'sent').toString().toLowerCase();
-                    if (st.contains('follow')) return false;
-                  } else if (widget.filter == 'Follow-up') {
-                    final st = (m['status'] ?? '').toString().toLowerCase();
-                    if (!st.contains('follow') && m['has_followup'] != true) return false;
-                  }
-                  if (widget.searchQuery.isNotEmpty) {
-                    final comp = (m['company'] ?? '').toString().toLowerCase();
-                    final em = (m['email'] ?? '').toString().toLowerCase();
-                    if (!comp.contains(widget.searchQuery) && !em.contains(widget.searchQuery)) return false;
-                  }
-                  if (widget.recentEmailFilter == 'Replied') {
-                    final rs = (m['reply_status'] ?? m['status'] ?? '').toString().toLowerCase();
-                    if (rs != 'replied' && rs != 'reply' && m['has_reply'] != true) return false;
-                  }
-                  if (widget.recentEmailFilter == 'No Reply') {
-                    final rs = (m['reply_status'] ?? m['status'] ?? '').toString().toLowerCase();
-                    if (rs == 'replied' || m['has_reply'] == true) return false;
-                  }
-                  return true;
-                }).toList();
-                if (docs.isEmpty) {
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Center(
-                        child: Text(
-                          widget.searchQuery.isEmpty ? 'No emails yet. The bot will start sending soon.' : 'No match for "${widget.searchQuery}"',
-                          style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                  );
-                }
-                return Column(
-                  children: [
-                    ...docs.map((d) {
-                      final m = d.data() as Map<String, dynamic>;
-                      final company = (m['company'] ?? 'Unknown').toString();
-                      final email = (m['email'] ?? '').toString();
-                      final cname = widget.clientDisplayName(m);
-                      // FIX: Try all date fields, don't crash if timestamp missing
-                      final dateVal = m['timestamp'] ?? m['date'] ?? m['sent_at'] ?? m['created_at'] ?? '';
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF111827),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF1F2937)),
-                        ),
-                        child: ListTile(
-                          onTap: () => widget.onShowEmailDetail(m),
-                          leading: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                            child: const Icon(Icons.mail_outline, color: Color(0xFF34D399), size: 16),
-                          ),
-                          title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text('$email - $cname - ${widget.formatDate(dateVal)}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
-                        ),
-                      );
-                    }),
-                    TextButton(onPressed: widget.onLoadMoreJobs, child: const Text('Load More', style: TextStyle(color: Color(0xFF10B981)))),
+              // PROFESSIONAL: Sync status like Gmail
+              Row(
+                children: [
+                  Text(appState.isSyncing ? 'Syncing...' : appState.lastSyncLabel, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                  if (appState.isSyncing) ...[
+                    const SizedBox(width: 6),
+                    const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF10B981))),
                   ],
-                );
-              },
-            ),
-          ],
-          const SizedBox(height: 20),
-          _collapsibleHeader('Follow-ups', widget.showFollowups, widget.onToggleFollowups),
-          if (widget.showFollowups) ...[
-            const SizedBox(height: 10),
-            StreamBuilder<QuerySnapshot>(
-              // FIX: NO orderBy, NO includeMetadataChanges
-              stream: FirebaseFirestore.instance.collection('jobs_followups').limit(widget.followupsLimit).snapshots(),
-              builder: (context, snap) {
-                if (snap.hasError) {
-                  return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12))));
-                }
-                if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-                  return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))));
-                }
-                final allDocs = snap.data?.docs ?? [];
-                final docs = allDocs.where((d) {
-                  final m = d.data() as Map<String, dynamic>;
-                  return _safeFilter(m);
-                }).toList();
-                if (docs.isEmpty) {
-                  return const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Center(child: Text('No follow-ups yet.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12))),
-                    ),
-                  );
-                }
-                return Column(
-                  children: docs.map((d) {
-                    final m = d.data() as Map<String, dynamic>;
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
+                  const Spacer(),
+                  Text('${appState.lastJobs.length} emails cached', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('Client Filter', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: const Color(0xFF111827),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: const Color(0xFF1F2937)),
                       ),
-                      child: ListTile(
-                        onTap: () => widget.onShowFollowupDetail(m),
-                        leading: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                          child: const Icon(Icons.reply_outlined, color: Color(0xFFF59E0B), size: 16),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: validClientFilter,
+                          dropdownColor: const Color(0xFF111827),
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          isExpanded: true,
+                          items: clientFilterItems,
+                          onChanged: (v) => widget.onClientFilterChanged(v ?? 'All'),
                         ),
-                        title: Text((m['company'] ?? 'Unknown').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
-                        subtitle: Text((m['email'] ?? '').toString(), style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
-                        trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
                       ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Search company...',
+                        hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+                        filled: true,
+                        fillColor: const Color(0xFF111827),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
+                        prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280), size: 18),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      onChanged: (v) => widget.onSearchChanged(v.toLowerCase()),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111827),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF1F2937)),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: widget.filter,
+                        dropdownColor: const Color(0xFF111827),
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        items: ['All', 'Sent', 'Follow-up'].map((f) => DropdownMenuItem(value: f, child: Text(f))).toList(),
+                        onChanged: (v) => widget.onFilterChanged(v ?? 'All'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _collapsibleHeader('Replies', widget.showReplies, widget.onToggleReplies),
+              if (widget.showReplies) ...[
+                const SizedBox(height: 10),
+                _repliesList(),
+              ],
+              const SizedBox(height: 24),
+              _collapsibleHeader('Recent Emails', widget.showRecentEmails, widget.onToggleRecentEmails),
+              if (widget.showRecentEmails) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  children: ['All', 'Replied', 'No Reply'].map((f) {
+                    final sel = widget.recentEmailFilter == f;
+                    return ChoiceChip(
+                      label: Text(f, style: TextStyle(color: sel ? Colors.white : const Color(0xFF9CA3AF), fontSize: 12)),
+                      selected: sel,
+                      selectedColor: const Color(0xFF10B981),
+                      backgroundColor: const Color(0xFF1F2937),
+                      onSelected: (_) => widget.onRecentEmailFilterChanged(f),
                     );
                   }).toList(),
-                );
-              },
-            ),
-          ],
-          const SizedBox(height: 40),
-        ],
-      ),
+                ),
+                const SizedBox(height: 10),
+                _recentEmailsList(),
+              ],
+              const SizedBox(height: 20),
+              _collapsibleHeader('Follow-ups', widget.showFollowups, widget.onToggleFollowups),
+              if (widget.showFollowups) ...[
+                const SizedBox(height: 10),
+                _followupsList(),
+              ],
+              const SizedBox(height: 40),
+            ],
+          ),
+        );
+      },
     );
   }
 }
