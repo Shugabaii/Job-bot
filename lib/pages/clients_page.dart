@@ -36,11 +36,23 @@ class ClientsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('clients').snapshots(),
         builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Clients', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+                SizedBox(height: 40),
+                Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
+                SizedBox(height: 16),
+                Center(child: Text('Loading clients...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12))),
+              ],
+            );
+          }
           final docs = snap.data?.docs ?? [];
           final clients = docs.map((d) {
             final m = Map<String, dynamic>.from(d.data() as Map<String, dynamic>);
