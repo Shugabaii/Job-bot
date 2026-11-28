@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ActivityPage extends StatelessWidget {
+class ActivityPage extends StatefulWidget {
   final String selectedClientFilter;
   final List<Map<String, dynamic>> clientsCache;
   final String searchQuery;
@@ -55,39 +55,15 @@ class ActivityPage extends StatelessWidget {
     required this.onShowFollowupDetail,
   });
 
-  Widget _skeletonRow() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      height: 64,
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1F2937)),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8))),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(width: 140, height: 11, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-                const SizedBox(height: 8),
-                Container(width: 200, height: 9, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  @override
+  State<ActivityPage> createState() => _ActivityPageState();
+}
 
-  Widget _skeletonList() {
-    return Column(children: [_skeletonRow(), _skeletonRow(), _skeletonRow()]);
-  }
+class _ActivityPageState extends State<ActivityPage> {
+  // FIX: Keep last data - show instantly, never skeleton
+  List<QueryDocumentSnapshot>? _lastReplies;
+  List<QueryDocumentSnapshot>? _lastRecent;
+  List<QueryDocumentSnapshot>? _lastFollowups;
 
   Widget _collapsibleHeader(String title, bool expanded, VoidCallback onTap) {
     return InkWell(
@@ -118,13 +94,15 @@ class ActivityPage extends StatelessWidget {
 
   Widget _repliesList() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('jobs_replies').orderBy('timestamp', descending: true).limit(20).snapshots(),
+      stream: FirebaseFirestore.instance.collection('jobs_replies').orderBy('timestamp', descending: true).limit(20).snapshots(includeMetadataChanges: true),
       builder: (context, snap) {
-        // NO LOADING - skeleton
-        if (!snap.hasData) return _skeletonList();
-        final docs = snap.data!.docs.where((d) {
+        if (snap.hasData) _lastReplies = snap.data!.docs;
+        final allDocs = _lastReplies ?? [];
+        // Still loading first time and no cache yet: show nothing, not skeleton
+        if (!snap.hasData && _lastReplies == null) return const SizedBox.shrink();
+        final docs = allDocs.where((d) {
           final r = d.data() as Map<String, dynamic>;
-          return matchesClientFilter(r);
+          return widget.matchesClientFilter(r);
         }).toList();
         if (docs.isEmpty) {
           return Card(
@@ -176,7 +154,7 @@ class ActivityPage extends StatelessWidget {
                   border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
                 ),
                 child: ListTile(
-                  onTap: () => onShowReplyDetail(r),
+                  onTap: () => widget.onShowReplyDetail(r),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                   leading: Container(
                     width: 36,
@@ -208,9 +186,9 @@ class ActivityPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final clientFilterItems = <DropdownMenuItem<String>>[
       const DropdownMenuItem(value: 'All', child: Text('All Clients')),
-      ...clientsCache.map((c) => DropdownMenuItem(value: (c['id'] ?? '').toString(), child: Text((c['name'] ?? '').toString()))),
+      ...widget.clientsCache.map((c) => DropdownMenuItem(value: (c['id'] ?? '').toString(), child: Text((c['name'] ?? '').toString()))),
     ];
-    final validClientFilter = clientFilterItems.any((item) => item.value == selectedClientFilter) ? selectedClientFilter : 'All';
+    final validClientFilter = clientFilterItems.any((item) => item.value == widget.selectedClientFilter) ? widget.selectedClientFilter : 'All';
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -237,7 +215,7 @@ class ActivityPage extends StatelessWidget {
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                       isExpanded: true,
                       items: clientFilterItems,
-                      onChanged: (v) => onClientFilterChanged(v ?? 'All'),
+                      onChanged: (v) => widget.onClientFilterChanged(v ?? 'All'),
                     ),
                   ),
                 ),
@@ -259,7 +237,7 @@ class ActivityPage extends StatelessWidget {
                     prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280), size: 18),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   ),
-                  onChanged: (v) => onSearchChanged(v.toLowerCase()),
+                  onChanged: (v) => widget.onSearchChanged(v.toLowerCase()),
                 ),
               ),
               const SizedBox(width: 8),
@@ -272,65 +250,66 @@ class ActivityPage extends StatelessWidget {
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
-                    value: filter,
+                    value: widget.filter,
                     dropdownColor: const Color(0xFF111827),
                     style: const TextStyle(color: Colors.white, fontSize: 12),
                     items: ['All', 'Sent', 'Follow-up'].map((f) => DropdownMenuItem(value: f, child: Text(f))).toList(),
-                    onChanged: (v) => onFilterChanged(v ?? 'All'),
+                    onChanged: (v) => widget.onFilterChanged(v ?? 'All'),
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
-          _collapsibleHeader('Replies', showReplies, onToggleReplies),
-          if (showReplies) ...[
+          _collapsibleHeader('Replies', widget.showReplies, widget.onToggleReplies),
+          if (widget.showReplies) ...[
             const SizedBox(height: 10),
             _repliesList(),
           ],
           const SizedBox(height: 24),
-          _collapsibleHeader('Recent Emails', showRecentEmails, onToggleRecentEmails),
-          if (showRecentEmails) ...[
+          _collapsibleHeader('Recent Emails', widget.showRecentEmails, widget.onToggleRecentEmails),
+          if (widget.showRecentEmails) ...[
             const SizedBox(height: 10),
             Wrap(
               spacing: 6,
               children: ['All', 'Replied', 'No Reply'].map((f) {
-                final sel = recentEmailFilter == f;
+                final sel = widget.recentEmailFilter == f;
                 return ChoiceChip(
                   label: Text(f, style: TextStyle(color: sel ? Colors.white : const Color(0xFF9CA3AF), fontSize: 12)),
                   selected: sel,
                   selectedColor: const Color(0xFF10B981),
                   backgroundColor: const Color(0xFF1F2937),
-                  onSelected: (_) => onRecentEmailFilterChanged(f),
+                  onSelected: (_) => widget.onRecentEmailFilterChanged(f),
                 );
               }).toList(),
             ),
             const SizedBox(height: 10),
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(jobsLimit).snapshots(),
+              stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(widget.jobsLimit).snapshots(includeMetadataChanges: true),
               builder: (context, snap) {
-                // NO LOADING - skeleton
-                if (!snap.hasData) return _skeletonList();
-                final docs = snap.data!.docs.where((d) {
+                if (snap.hasData) _lastRecent = snap.data!.docs;
+                if (!snap.hasData && _lastRecent == null) return const SizedBox.shrink();
+                final allDocs = _lastRecent ?? [];
+                final docs = allDocs.where((d) {
                   final m = d.data() as Map<String, dynamic>;
-                  if (!matchesClientFilter(m)) return false;
-                  if (filter == 'Sent') {
+                  if (!widget.matchesClientFilter(m)) return false;
+                  if (widget.filter == 'Sent') {
                     final st = (m['status'] ?? 'sent').toString().toLowerCase();
                     if (st.contains('follow')) return false;
-                  } else if (filter == 'Follow-up') {
+                  } else if (widget.filter == 'Follow-up') {
                     final st = (m['status'] ?? '').toString().toLowerCase();
                     if (!st.contains('follow') && m['has_followup'] != true) return false;
                   }
-                  if (searchQuery.isNotEmpty) {
+                  if (widget.searchQuery.isNotEmpty) {
                     final comp = (m['company'] ?? '').toString().toLowerCase();
                     final em = (m['email'] ?? '').toString().toLowerCase();
-                    if (!comp.contains(searchQuery) && !em.contains(searchQuery)) return false;
+                    if (!comp.contains(widget.searchQuery) && !em.contains(widget.searchQuery)) return false;
                   }
-                  if (recentEmailFilter == 'Replied') {
+                  if (widget.recentEmailFilter == 'Replied') {
                     final rs = (m['reply_status'] ?? m['status'] ?? '').toString().toLowerCase();
                     if (rs != 'replied' && rs != 'reply' && m['has_reply'] != true) return false;
                   }
-                  if (recentEmailFilter == 'No Reply') {
+                  if (widget.recentEmailFilter == 'No Reply') {
                     final rs = (m['reply_status'] ?? m['status'] ?? '').toString().toLowerCase();
                     if (rs == 'replied' || m['has_reply'] == true) return false;
                   }
@@ -342,7 +321,7 @@ class ActivityPage extends StatelessWidget {
                       padding: const EdgeInsets.all(20),
                       child: Center(
                         child: Text(
-                          searchQuery.isEmpty ? 'No emails yet. The bot will start sending soon.' : 'No match for "$searchQuery"',
+                          widget.searchQuery.isEmpty ? 'No emails yet. The bot will start sending soon.' : 'No match for "${widget.searchQuery}"',
                           style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
                           textAlign: TextAlign.center,
                         ),
@@ -356,7 +335,7 @@ class ActivityPage extends StatelessWidget {
                       final m = d.data() as Map<String, dynamic>;
                       final company = (m['company'] ?? 'Unknown').toString();
                       final email = (m['email'] ?? '').toString();
-                      final cname = clientDisplayName(m);
+                      final cname = widget.clientDisplayName(m);
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
@@ -365,7 +344,7 @@ class ActivityPage extends StatelessWidget {
                           border: Border.all(color: const Color(0xFF1F2937)),
                         ),
                         child: ListTile(
-                          onTap: () => onShowEmailDetail(m),
+                          onTap: () => widget.onShowEmailDetail(m),
                           leading: Container(
                             width: 36,
                             height: 36,
@@ -373,29 +352,30 @@ class ActivityPage extends StatelessWidget {
                             child: const Icon(Icons.mail_outline, color: Color(0xFF34D399), size: 16),
                           ),
                           title: Text(company, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text('$email - $cname - ${formatDate(m['timestamp'])}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text('$email - $cname - ${widget.formatDate(m['timestamp'])}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)), maxLines: 1, overflow: TextOverflow.ellipsis),
                           trailing: const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7280)),
                         ),
                       );
                     }),
-                    TextButton(onPressed: onLoadMoreJobs, child: const Text('Load More', style: TextStyle(color: Color(0xFF10B981)))),
+                    TextButton(onPressed: widget.onLoadMoreJobs, child: const Text('Load More', style: TextStyle(color: Color(0xFF10B981)))),
                   ],
                 );
               },
             ),
           ],
           const SizedBox(height: 20),
-          _collapsibleHeader('Follow-ups', showFollowups, onToggleFollowups),
-          if (showFollowups) ...[
+          _collapsibleHeader('Follow-ups', widget.showFollowups, widget.onToggleFollowups),
+          if (widget.showFollowups) ...[
             const SizedBox(height: 10),
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('jobs_followups').orderBy('timestamp', descending: true).limit(followupsLimit).snapshots(),
+              stream: FirebaseFirestore.instance.collection('jobs_followups').orderBy('timestamp', descending: true).limit(widget.followupsLimit).snapshots(includeMetadataChanges: true),
               builder: (context, snap) {
-                // NO LOADING - skeleton
-                if (!snap.hasData) return _skeletonList();
-                final docs = snap.data!.docs.where((d) {
+                if (snap.hasData) _lastFollowups = snap.data!.docs;
+                if (!snap.hasData && _lastFollowups == null) return const SizedBox.shrink();
+                final allDocs = _lastFollowups ?? [];
+                final docs = allDocs.where((d) {
                   final m = d.data() as Map<String, dynamic>;
-                  return matchesClientFilter(m);
+                  return widget.matchesClientFilter(m);
                 }).toList();
                 if (docs.isEmpty) {
                   return const Card(
@@ -416,7 +396,7 @@ class ActivityPage extends StatelessWidget {
                         border: Border.all(color: const Color(0xFF1F2937)),
                       ),
                       child: ListTile(
-                        onTap: () => onShowFollowupDetail(m),
+                        onTap: () => widget.onShowFollowupDetail(m),
                         leading: Container(
                           width: 36,
                           height: 36,
