@@ -26,12 +26,6 @@ class OverviewPage extends StatefulWidget {
 }
 
 class _OverviewPageState extends State<OverviewPage> {
-  // FIX: Keep last data - show it instantly, never show skeleton / empty boxes
-  List<QueryDocumentSnapshot>? _lastSentDocs;
-  Map<String, dynamic>? _lastStatusData;
-  int _lastRepliesCount = 0;
-  bool _hasEverLoadedReplies = false;
-
   Widget _metric(String title, String value, IconData icon, String sub) {
     return Expanded(
       child: Container(
@@ -74,16 +68,24 @@ class _OverviewPageState extends State<OverviewPage> {
     );
   }
 
-  Widget _buildGraph(List<QueryDocumentSnapshot> docs) {
+  // FIX: Try ALL possible date fields - your bot saves different names
+  DateTime? _getDate(Map<String, dynamic> m) {
+    for (final key in ['timestamp', 'date', 'sent_at', 'sentAt', 'created_at', 'createdAt', 'last_run']) {
+      final dt = widget.parseDate(m[key]);
+      if (dt != null) return dt;
+    }
+    return null;
+  }
+
+  Widget _buildGraph(List<Map<String, dynamic>> docs) {
     final now = DateTime.now();
     final Map<String, int> perDay = {};
     for (var i = 6; i >= 0; i--) {
       final d = now.subtract(Duration(days: i));
       perDay[widget.dayKey(d)] = 0;
     }
-    for (final d in docs) {
-      final m = d.data() as Map<String, dynamic>;
-      final dt = widget.parseDate(m['timestamp'] ?? m['date']);
+    for (final m in docs) {
+      final dt = _getDate(m);
       if (dt == null) continue;
       final k = widget.dayKey(dt);
       if (perDay.containsKey(k)) perDay[k] = (perDay[k] ?? 0) + 1;
@@ -121,35 +123,6 @@ class _OverviewPageState extends State<OverviewPage> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _repliesMetrics(int totalSent) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('jobs_replies').snapshots(includeMetadataChanges: true),
-      builder: (context, snap) {
-        // FIX: No skeleton. Show last known replies instantly, or 0 if never loaded.
-        if (snap.hasData) {
-          final all = snap.data?.docs ?? [];
-          final filtered = all.where((d) => widget.matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
-          _lastRepliesCount = filtered.length;
-          _hasEverLoadedReplies = true;
-        }
-        final replies = _hasEverLoadedReplies ? _lastRepliesCount : 0;
-        double rate = 0.0;
-        if (totalSent > 0) {
-          rate = (replies / totalSent * 100);
-          if (rate > 100) rate = 100;
-          if (rate < 0) rate = 0;
-        }
-        return Row(
-          children: [
-            _metric('Replies', '$replies', Icons.mark_email_read_outlined, 'Companies replied'),
-            const SizedBox(width: 12),
-            _metric('Reply Rate', '${rate.toStringAsFixed(1)}%', Icons.trending_up, 'Response rate'),
-          ],
-        );
-      },
     );
   }
 
@@ -202,39 +175,49 @@ class _OverviewPageState extends State<OverviewPage> {
               ],
             ),
             const SizedBox(height: 20),
-            StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance.collection('bot_status').doc('current').snapshots(includeMetadataChanges: true),
-              builder: (context, statusSnap) {
-                if (statusSnap.hasData && statusSnap.data?.data() != null) {
-                  _lastStatusData = statusSnap.data!.data() as Map<String, dynamic>;
+            // FIX: ONE stream, NO orderBy, NO includeMetadataChanges = no freeze
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('jobs_sent').limit(500).snapshots(),
+              builder: (context, sentSnap) {
+                if (sentSnap.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text('Firebase error: ${sentSnap.error}', style: const TextStyle(color: Colors.red, fontSize: 12)),
+                  );
                 }
-                final data = _lastStatusData;
-                final rawCompany = (data?['last_company'] ?? '').toString().trim();
-                final lastCompany = (rawCompany.isEmpty || rawCompany.startsWith('Waiting ')) ? 'Waiting' : rawCompany;
-                final lastRun = (data?['last_run'] ?? 'No recent activity').toString();
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).snapshots(includeMetadataChanges: true),
-                  builder: (context, sentSnap) {
-                    // FIX: No skeleton. Use last data if still loading.
-                    if (sentSnap.hasData) {
-                      _lastSentDocs = sentSnap.data?.docs ?? [];
-                    }
-                    // First ever open with truly no data yet: show real 0s, not grey boxes
-                    final allDocs = _lastSentDocs ?? [];
-                    final filtered = allDocs.where((d) {
-                      final m = d.data() as Map<String, dynamic>;
-                      return widget.matchesClientFilter(m);
-                    }).toList();
-                    final totalSent = filtered.length;
-                    final sentTodayFirestore = filtered.where((d) {
-                      final m = d.data() as Map<String, dynamic>;
-                      final dt = widget.parseDate(m['timestamp']);
-                      return dt != null && widget.dayKey(dt) == widget.dayKey(DateTime.now());
-                    }).length;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
+                if (sentSnap.connectionState == ConnectionState.waiting && !sentSnap.hasData) {
+                  return const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
+                  );
+                }
+                final allDocs = sentSnap.data?.docs ?? [];
+                final allMaps = allDocs.map((d) => d.data() as Map<String, dynamic>).toList();
+                // FIX: If filter removes everything, show all - don't show 0 by mistake
+                var filtered = allMaps.where((m) {
+                  try { return widget.matchesClientFilter(m); } catch (_) { return true; }
+                }).toList();
+                if (filtered.isEmpty && allMaps.isNotEmpty) filtered = allMaps;
+
+                final totalSent = filtered.length;
+                final todayKey = widget.dayKey(DateTime.now());
+                final sentToday = filtered.where((m) {
+                  final dt = _getDate(m);
+                  return dt != null && widget.dayKey(dt) == todayKey;
+                }).length;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Bot Status - read once, not as a stream
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance.collection('bot_status').doc('current').get(const GetOptions(source: Source.server)),
+                      builder: (context, statusSnap) {
+                        final data = statusSnap.data?.data() as Map<String, dynamic>?;
+                        final rawCompany = (data?['last_company'] ?? '').toString().trim();
+                        final lastCompany = (rawCompany.isEmpty || rawCompany.startsWith('Waiting ')) ? 'Waiting' : rawCompany;
+                        final lastRun = (data?['last_run'] ?? 'No recent activity').toString();
+                        return Container(
                           decoration: BoxDecoration(
                             color: const Color(0xFF111827),
                             borderRadius: BorderRadius.circular(16),
@@ -263,20 +246,9 @@ class _OverviewPageState extends State<OverviewPage> {
                                   ],
                                 ),
                                 const SizedBox(height: 18),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('$sentTodayFirestore', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
-                                          const SizedBox(height: 2),
-                                          const Text('Sent Today', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                Text('$sentToday', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+                                const SizedBox(height: 2),
+                                const Text('Sent Today', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
                                 const SizedBox(height: 12),
                                 Text('Last: $lastCompany', style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
                                 Text(lastRun, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
@@ -289,22 +261,41 @@ class _OverviewPageState extends State<OverviewPage> {
                               ],
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildGraph(filtered),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            _metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'),
-                            const SizedBox(width: 12),
-                            _metric('Today', '$sentTodayFirestore', Icons.today_outlined, 'Sent today'),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _repliesMetrics(totalSent),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    _buildGraph(filtered),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _metric('Total Sent', '$totalSent', Icons.send_outlined, 'All emails sent'),
+                        const SizedBox(width: 12),
+                        _metric('Today', '$sentToday', Icons.today_outlined, 'Sent today'),
                       ],
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 12),
+                    // Replies - separate simple stream, no metadata
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('jobs_replies').limit(500).snapshots(),
+                      builder: (context, repSnap) {
+                        final replies = repSnap.data?.docs.length ?? 0;
+                        double rate = 0.0;
+                        if (totalSent > 0) {
+                          rate = (replies / totalSent * 100);
+                          if (rate > 100) rate = 100;
+                          if (rate < 0) rate = 0;
+                        }
+                        return Row(
+                          children: [
+                            _metric('Replies', '$replies', Icons.mark_email_read_outlined, 'Companies replied'),
+                            const SizedBox(width: 12),
+                            _metric('Reply Rate', '${rate.toStringAsFixed(1)}%', Icons.trending_up, 'Response rate'),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
                 );
               },
             ),
