@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ClientsPage extends StatelessWidget {
+class ClientsPage extends StatefulWidget {
   final String activeClientId;
   final void Function(List<Map<String, dynamic>>) onClientsUpdated;
   final VoidCallback onUseMeHabibu;
@@ -33,49 +33,13 @@ class ClientsPage extends StatelessWidget {
     required this.onEditProof,
   });
 
-  Widget _skeletonCard() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      height: 180,
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1F2937)),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8))),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(width: 140, height: 12, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-                    const SizedBox(height: 8),
-                    Container(width: 200, height: 10, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(width: double.infinity, height: 32, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8))),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: Container(height: 32, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8)))),
-              const SizedBox(width: 8),
-              Expanded(child: Container(height: 32, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8)))),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  @override
+  State<ClientsPage> createState() => _ClientsPageState();
+}
+
+class _ClientsPageState extends State<ClientsPage> {
+  // FIX: Keep last data - show instantly, never skeleton
+  List<QueryDocumentSnapshot>? _lastDocs;
 
   Widget _header() {
     return Row(
@@ -85,12 +49,12 @@ class ClientsPage extends StatelessWidget {
         Row(
           children: [
             TextButton.icon(
-              onPressed: onUseMeHabibu,
+              onPressed: widget.onUseMeHabibu,
               icon: const Icon(Icons.person_outline, size: 16, color: Color(0xFF3B82F6)),
               label: const Text('Use my profile', style: TextStyle(color: Color(0xFF60A5FA), fontWeight: FontWeight.w600, fontSize: 12)),
             ),
             TextButton.icon(
-              onPressed: onAddClient,
+              onPressed: widget.onAddClient,
               icon: const Icon(Icons.person_add_outlined, size: 16, color: Color(0xFF10B981)),
               label: const Text('Add Client', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w600)),
             ),
@@ -106,22 +70,21 @@ class ClientsPage extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('clients').snapshots(),
+        stream: FirebaseFirestore.instance.collection('clients').snapshots(includeMetadataChanges: true),
         builder: (context, snap) {
-          // NO LOADING - show header + skeleton immediately
-          if (!snap.hasData) {
+          if (snap.hasData) _lastDocs = snap.data!.docs;
+          // First open with no cache yet: show header only, not skeleton
+          if (!snap.hasData && _lastDocs == null) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(),
                 const SizedBox(height: 6),
-                _skeletonCard(),
-                _skeletonCard(),
-                _skeletonCard(),
+                const Text('Loading clients...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
               ],
             );
           }
-          final docs = snap.data?.docs ?? [];
+          final docs = _lastDocs ?? [];
           final clients = docs.map((d) {
             final m = Map<String, dynamic>.from(d.data() as Map<String, dynamic>);
             m['id'] = d.id;
@@ -132,9 +95,8 @@ class ClientsPage extends StatelessWidget {
             if ((b['id'] ?? '') == 'user') return 1;
             return 0;
           });
-          // FIX: Only notify parent when we actually have data, never with empty on first load
           if (clients.isNotEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) => onClientsUpdated(clients));
+            WidgetsBinding.instance.addPostFrameCallback((_) => widget.onClientsUpdated(clients));
           }
 
           return Column(
@@ -164,11 +126,11 @@ class ClientsPage extends StatelessWidget {
                 final loc = (c['location'] ?? c['place'] ?? '').toString();
                 final gmailOk = c['gmail_connected'] == true;
                 final isPaused = c['is_paused'] == true || (c['status'] ?? '').toString().toLowerCase() == 'paused';
-                final isActive = id == activeClientId;
+                final isActive = id == widget.activeClientId;
                 final maxPerDay = c['max_per_day'] ?? 10;
                 final cvLink = (c['cv_url'] ?? c['cvUrl'] ?? c['cvLink'] ?? '').toString();
                 final hasCv = cvLink.isNotEmpty;
-                final senderEmail = senderEmailForClient(c);
+                final senderEmail = widget.senderEmailForClient(c);
                 final hasProof = (c['project_1'] ?? '').toString().isNotEmpty || (c['experience'] ?? '').toString().isNotEmpty;
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
@@ -227,7 +189,7 @@ class ClientsPage extends StatelessWidget {
                               ),
                             IconButton(
                               icon: const Icon(Icons.delete_outline, size: 18, color: Color(0xFF9CA3AF)),
-                              onPressed: () => onDeleteClient(id, name),
+                              onPressed: () => widget.onDeleteClient(id, name),
                             ),
                           ],
                         ),
@@ -250,7 +212,7 @@ class ClientsPage extends StatelessWidget {
                               ),
                               const SizedBox(width: 6),
                               GestureDetector(
-                                onTap: () => onEditSenderEmail(id, name, senderEmail),
+                                onTap: () => widget.onEditSenderEmail(id, name, senderEmail),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                   decoration: BoxDecoration(color: const Color(0xFF10B981), borderRadius: BorderRadius.circular(6)),
@@ -309,7 +271,7 @@ class ClientsPage extends StatelessWidget {
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: () => onSetActiveClient(id),
+                                onPressed: () => widget.onSetActiveClient(id),
                                 style: OutlinedButton.styleFrom(
                                   side: BorderSide(color: isActive ? const Color(0xFF10B981) : const Color(0xFF1F2937)),
                                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -324,7 +286,7 @@ class ClientsPage extends StatelessWidget {
                             const SizedBox(width: 8),
                             Expanded(
                               child: ElevatedButton.icon(
-                                onPressed: () => onShowConnectLink(id, name, senderEmail),
+                                onPressed: () => widget.onShowConnectLink(id, name, senderEmail),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF1a73e8),
                                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -341,7 +303,7 @@ class ClientsPage extends StatelessWidget {
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: () => onPauseResumeClient(id, !isPaused),
+                                onPressed: () => widget.onPauseResumeClient(id, !isPaused),
                                 style: OutlinedButton.styleFrom(
                                   side: const BorderSide(color: Color(0xFF1F2937)),
                                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -353,7 +315,7 @@ class ClientsPage extends StatelessWidget {
                             const SizedBox(width: 8),
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: () => onShowLimitDialog(id, name, maxPerDay),
+                                onPressed: () => widget.onShowLimitDialog(id, name, maxPerDay),
                                 style: OutlinedButton.styleFrom(
                                   side: const BorderSide(color: Color(0xFF1F2937)),
                                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -368,7 +330,7 @@ class ClientsPage extends StatelessWidget {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: () => onPasteCv(id, name, cvLink),
+                            onPressed: () => widget.onPasteCv(id, name, cvLink),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: hasCv ? const Color(0xFF1F2937) : const Color(0xFFF59E0B),
                               padding: const EdgeInsets.symmetric(vertical: 9),
@@ -385,7 +347,7 @@ class ClientsPage extends StatelessWidget {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: () => onEditProof(id, name, c),
+                            onPressed: () => widget.onEditProof(id, name, c),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF10B981),
                               padding: const EdgeInsets.symmetric(vertical: 9),
