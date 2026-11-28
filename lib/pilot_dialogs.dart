@@ -51,6 +51,34 @@ class PilotDialogs {
     );
   }
 
+  // SKELETON for dialogs - no spinner
+  static Widget _skeletonField() {
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(color: const Color(0xFF090D16), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))),
+    );
+  }
+
+  static Widget _skeletonDialog() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(width: 120, height: 14, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 12),
+          Container(width: double.infinity, height: 12, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 16),
+          _skeletonField(),
+          const SizedBox(height: 12),
+          _skeletonField(),
+          const SizedBox(height: 12),
+          Container(width: double.infinity, height: 100, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(10))),
+        ],
+      ),
+    );
+  }
+
   static Widget _phoneActionCard(BuildContext context, String phone, String company, {Map<String, dynamic>? client}) {
     final clean = PilotHelpers.cleanPhone(phone);
     if (clean.isEmpty) return const SizedBox.shrink();
@@ -301,6 +329,7 @@ class PilotDialogs {
     final cyclesCtrl = TextEditingController(text: '3');
     final sleepCtrl = TextEditingController(text: '6');
     final waitCtrl = TextEditingController(text: '15');
+    bool loaded = false;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -309,20 +338,9 @@ class PilotDialogs {
       builder: (ctx) => FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance.collection('bot_config').doc('settings').get(),
         builder: (ctx2, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const SizedBox(
-              height: 280,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: Color(0xFF10B981)),
-                  SizedBox(height: 16),
-                  Text('Loading settings...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
-                ],
-              ),
-            );
-          }
-          if (snap.hasData && snap.data!.exists) {
+          // NO LOADING - show form with defaults immediately, fill in when data arrives
+          if (snap.hasData && snap.data!.exists && !loaded) {
+            loaded = true;
             final d = snap.data!.data() as Map<String, dynamic>;
             maxCtrl.text = (d['max_per_day'] ?? 20).toString();
             cyclesCtrl.text = (d['max_cycles_per_day'] ?? 3).toString();
@@ -697,9 +715,7 @@ class PilotDialogs {
       builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
         future: PilotHelpers.fetchMergedDetail(j),
         builder: (ctx, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const SizedBox(height: 300, child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981), strokeWidth: 2)));
-          }
+          // NO SPINNER - show instant preview from `j`, upgrade to merged when ready
           final merged = snap.data ?? j;
           final company = (merged['company'] ?? 'Unknown').toString();
           final email = (merged['email'] ?? '').toString();
@@ -900,7 +916,7 @@ class PilotDialogs {
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       onPressed: () => PilotHelpers.exportSingleEmailPdf(r),
-                      icon: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 16),
+                      icon: const Icon(Icons.picture_as_pdf, color: Colors.white, fontSize: 16),
                       label: const Text('PDF Report', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
                     ),
                   ),
