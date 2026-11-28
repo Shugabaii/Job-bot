@@ -51,33 +51,6 @@ class PilotDialogs {
     );
   }
 
-  static Widget _skeletonField() {
-    return Container(
-      height: 48,
-      decoration: BoxDecoration(color: const Color(0xFF090D16), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))),
-    );
-  }
-
-  static Widget _skeletonDialog() {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(width: 120, height: 14, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-          const SizedBox(height: 12),
-          Container(width: double.infinity, height: 12, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-          const SizedBox(height: 16),
-          _skeletonField(),
-          const SizedBox(height: 12),
-          _skeletonField(),
-          const SizedBox(height: 12),
-          Container(width: double.infinity, height: 100, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(10))),
-        ],
-      ),
-    );
-  }
-
   static Widget _phoneActionCard(BuildContext context, String phone, String company, {Map<String, dynamic>? client}) {
     final clean = PilotHelpers.cleanPhone(phone);
     if (clean.isEmpty) return const SizedBox.shrink();
@@ -913,7 +886,6 @@ class PilotDialogs {
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       onPressed: () => PilotHelpers.exportSingleEmailPdf(r),
-                      // FIXED: was fontSize: 16, Icon uses size
                       icon: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 16),
                       label: const Text('PDF Report', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
                     ),
