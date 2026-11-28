@@ -24,6 +24,7 @@ jobs:
           cache: true
       - run: flutter clean
       - run: flutter pub get
+      - run: dart run flutter_launcher_icons
       - name: Build APK with retry for 429
         run: |
           SUCCESS=0
