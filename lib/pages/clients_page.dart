@@ -38,8 +38,8 @@ class ClientsPage extends StatefulWidget {
 }
 
 class _ClientsPageState extends State<ClientsPage> {
-  // FIX: Keep last data - show instantly, never skeleton
-  List<QueryDocumentSnapshot>? _lastDocs;
+  // FIX: Remember last sent list so we don't call onClientsUpdated in a loop
+  String _lastSentSignature = '';
 
   Widget _header() {
     return Row(
@@ -70,21 +70,30 @@ class _ClientsPageState extends State<ClientsPage> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('clients').snapshots(includeMetadataChanges: true),
+        // FIX: NO includeMetadataChanges - reads directly from Firebase, no freeze loop
+        stream: FirebaseFirestore.instance.collection('clients').snapshots(),
         builder: (context, snap) {
-          if (snap.hasData) _lastDocs = snap.data!.docs;
-          // First open with no cache yet: show header only, not skeleton
-          if (!snap.hasData && _lastDocs == null) {
+          if (snap.hasError) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(),
-                const SizedBox(height: 6),
-                const Text('Loading clients...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+                const SizedBox(height: 12),
+                Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12)))),
               ],
             );
           }
-          final docs = _lastDocs ?? [];
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _header(),
+                const SizedBox(height: 20),
+                const Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
+              ],
+            );
+          }
+          final docs = snap.data?.docs ?? [];
           final clients = docs.map((d) {
             final m = Map<String, dynamic>.from(d.data() as Map<String, dynamic>);
             m['id'] = d.id;
@@ -95,8 +104,14 @@ class _ClientsPageState extends State<ClientsPage> {
             if ((b['id'] ?? '') == 'user') return 1;
             return 0;
           });
-          if (clients.isNotEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) => widget.onClientsUpdated(clients));
+
+          // FIX: Only notify parent when list actually changed - stops setState loop / freeze
+          final signature = clients.map((c) => '${c['id']}:${c['name']}:${c['gmail_connected']}:${c['is_paused']}').join('|');
+          if (clients.isNotEmpty && signature != _lastSentSignature) {
+            _lastSentSignature = signature;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) widget.onClientsUpdated(clients);
+            });
           }
 
           return Column(
