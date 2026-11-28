@@ -356,7 +356,7 @@ class _DashboardState extends State<Dashboard> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]), borderRadius: BorderRadius.circular(10)),
-                  child: const Center(child: Text('C', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18))),
+                  child: const Center(child: Icon(Icons.home, color: Colors.white, size: 22)),
                 ),
               ),
             ),
@@ -401,7 +401,7 @@ class _DashboardState extends State<Dashboard> {
         indicatorColor: const Color(0xFF10B981).withValues(alpha: 0.2),
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard, color: Color(0xFF10B981)), label: 'Overview'),
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: Color(0xFF10B981)), label: 'Overview'),
           NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people, color: Color(0xFF10B981)), label: 'Clients'),
           NavigationDestination(icon: Icon(Icons.mark_email_unread_outlined), selectedIcon: Icon(Icons.mark_email_unread, color: Color(0xFF10B981)), label: 'Activity'),
           NavigationDestination(icon: Icon(Icons.queue_outlined), selectedIcon: Icon(Icons.queue, color: Color(0xFF10B981)), label: 'Queue'),
