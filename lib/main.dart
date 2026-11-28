@@ -293,6 +293,8 @@ class _DashboardState extends State<Dashboard> {
         activeClientId: _activeClientId,
         onClientsUpdated: (clients) {
           if (!mounted) return;
+          // FIX: Never clear cache with empty list - this caused 0 flash everywhere
+          if (clients.isEmpty && _clientsCache.isNotEmpty) return;
           setState(() => _clientsCache = clients);
         },
         onUseMeHabibu: _useMeHabibu,
@@ -348,7 +350,7 @@ class _DashboardState extends State<Dashboard> {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: Image.asset(
-                'assets/icon.png',
+                'assets/icon/icon.png',
                 width: 38,
                 height: 38,
                 fit: BoxFit.cover,
@@ -356,7 +358,7 @@ class _DashboardState extends State<Dashboard> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]), borderRadius: BorderRadius.circular(10)),
-                  child: const Center(child: Icon(Icons.home, color: Colors.white, size: 22)),
+                  child: const Center(child: Text('CP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
                 ),
               ),
             ),
@@ -401,10 +403,10 @@ class _DashboardState extends State<Dashboard> {
         indicatorColor: const Color(0xFF10B981).withValues(alpha: 0.2),
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: Color(0xFF10B981)), label: 'Overview'),
-          NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people, color: Color(0xFF10B981)), label: 'Clients'),
-          NavigationDestination(icon: Icon(Icons.mark_email_unread_outlined), selectedIcon: Icon(Icons.mark_email_unread, color: Color(0xFF10B981)), label: 'Activity'),
-          NavigationDestination(icon: Icon(Icons.queue_outlined), selectedIcon: Icon(Icons.queue, color: Color(0xFF10B981)), label: 'Queue'),
+          NavigationDestination(icon: Icon(Icons.home_outlined, color: Color(0xFF9CA3AF)), selectedIcon: Icon(Icons.home, color: Color(0xFF10B981)), label: 'Overview'),
+          NavigationDestination(icon: Icon(Icons.people_outline, color: Color(0xFF9CA3AF)), selectedIcon: Icon(Icons.people, color: Color(0xFF10B981)), label: 'Clients'),
+          NavigationDestination(icon: Icon(Icons.mark_email_unread_outlined, color: Color(0xFF9CA3AF)), selectedIcon: Icon(Icons.mark_email_unread, color: Color(0xFF10B981)), label: 'Activity'),
+          NavigationDestination(icon: Icon(Icons.queue_outlined, color: Color(0xFF9CA3AF)), selectedIcon: Icon(Icons.queue, color: Color(0xFF10B981)), label: 'Queue'),
         ],
       ),
     );
