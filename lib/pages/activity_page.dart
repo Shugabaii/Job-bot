@@ -55,6 +55,40 @@ class ActivityPage extends StatelessWidget {
     required this.onShowFollowupDetail,
   });
 
+  Widget _skeletonRow() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      height: 64,
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF1F2937)),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8))),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(width: 140, height: 11, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+                const SizedBox(height: 8),
+                Container(width: 200, height: 9, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _skeletonList() {
+    return Column(children: [_skeletonRow(), _skeletonRow(), _skeletonRow()]);
+  }
+
   Widget _collapsibleHeader(String title, bool expanded, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -86,17 +120,8 @@ class ActivityPage extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('jobs_replies').orderBy('timestamp', descending: true).limit(20).snapshots(),
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Column(
-            children: [
-              SizedBox(height: 20),
-              Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
-              SizedBox(height: 12),
-              Text('Loading replies...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-            ],
-          );
-        }
-        if (!snap.hasData) return const SizedBox.shrink();
+        // NO LOADING - skeleton
+        if (!snap.hasData) return _skeletonList();
         final docs = snap.data!.docs.where((d) {
           final r = d.data() as Map<String, dynamic>;
           return matchesClientFilter(r);
@@ -284,17 +309,8 @@ class ActivityPage extends StatelessWidget {
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(jobsLimit).snapshots(),
               builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Column(
-                    children: [
-                      SizedBox(height: 20),
-                      Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
-                      SizedBox(height: 12),
-                      Text('Loading emails...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-                    ],
-                  );
-                }
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)));
+                // NO LOADING - skeleton
+                if (!snap.hasData) return _skeletonList();
                 final docs = snap.data!.docs.where((d) {
                   final m = d.data() as Map<String, dynamic>;
                   if (!matchesClientFilter(m)) return false;
@@ -375,17 +391,8 @@ class ActivityPage extends StatelessWidget {
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('jobs_followups').orderBy('timestamp', descending: true).limit(followupsLimit).snapshots(),
               builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Column(
-                    children: [
-                      SizedBox(height: 20),
-                      Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
-                      SizedBox(height: 12),
-                      Text('Loading follow-ups...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-                    ],
-                  );
-                }
-                if (!snap.hasData) return const SizedBox.shrink();
+                // NO LOADING - skeleton
+                if (!snap.hasData) return _skeletonList();
                 final docs = snap.data!.docs.where((d) {
                   final m = d.data() as Map<String, dynamic>;
                   return matchesClientFilter(m);
