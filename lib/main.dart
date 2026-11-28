@@ -13,6 +13,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    // FIX: Instant data - keep data on phone, show it immediately, no skeleton wait
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
   } catch (e) {
     debugPrint('Firebase init error: $e');
   }
@@ -84,7 +89,16 @@ class _DashboardState extends State<Dashboard> {
   Future<void> _ensureDefaultUser() async {
     try {
       final ref = FirebaseFirestore.instance.collection('clients').doc('user');
-      final doc = await ref.get();
+      // FIX: Try cache first - instant, no waiting for internet
+      DocumentSnapshot doc;
+      try {
+        doc = await ref.get(const GetOptions(source: Source.cache));
+        if (!doc.exists) {
+          doc = await ref.get(const GetOptions(source: Source.server));
+        }
+      } catch (_) {
+        doc = await ref.get();
+      }
       if (!doc.exists) {
         await ref.set({
           'name': 'Habibu Armayau Isah',
@@ -107,7 +121,7 @@ class _DashboardState extends State<Dashboard> {
           'created_at': DateTime.now().toIso8601String(),
         }, SetOptions(merge: true));
       } else {
-        final d = doc.data() ?? {};
+        final d = doc.data() as Map<String, dynamic>? ?? {};
         final name = (d['name'] ?? '').toString().trim();
         if (name.isEmpty || name.toLowerCase() == 'user' || name.toLowerCase() == 'unknown') {
           await ref.set({
@@ -138,10 +152,18 @@ class _DashboardState extends State<Dashboard> {
 
   Future<void> _loadActiveClient() async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('bot_config').doc('active').get();
+      DocumentSnapshot doc;
+      try {
+        doc = await FirebaseFirestore.instance.collection('bot_config').doc('active').get(const GetOptions(source: Source.cache));
+        if (!doc.exists) {
+          doc = await FirebaseFirestore.instance.collection('bot_config').doc('active').get(const GetOptions(source: Source.server));
+        }
+      } catch (_) {
+        doc = await FirebaseFirestore.instance.collection('bot_config').doc('active').get();
+      }
       if (mounted) {
         setState(() => _activeClientId = doc.exists
-            ? ((doc.data() ?? {})['active_client_id'] ?? (doc.data() ?? {})['client_id'] ?? 'user').toString()
+            ? ((doc.data() as Map<String, dynamic>? ?? {})['active_client_id'] ?? (doc.data() as Map<String, dynamic>? ?? {})['client_id'] ?? 'user').toString()
             : 'user');
       }
     } catch (_) {}
@@ -293,7 +315,6 @@ class _DashboardState extends State<Dashboard> {
         activeClientId: _activeClientId,
         onClientsUpdated: (clients) {
           if (!mounted) return;
-          // FIX: Never clear cache with empty list - this caused 0 flash everywhere
           if (clients.isEmpty && _clientsCache.isNotEmpty) return;
           setState(() => _clientsCache = clients);
         },
