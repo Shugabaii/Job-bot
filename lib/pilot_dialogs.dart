@@ -51,6 +51,15 @@ class PilotDialogs {
     );
   }
 
+  // PROFESSIONAL: Skeleton, not spinner - used in dialogs while loading
+  static Widget _skeletonBox({double height = 80}) {
+    return Container(
+      height: height,
+      width: double.infinity,
+      decoration: BoxDecoration(color: const Color(0xFF090D16), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF1F2937))),
+    );
+  }
+
   static Widget _phoneActionCard(BuildContext context, String phone, String company, {Map<String, dynamic>? client}) {
     final clean = PilotHelpers.cleanPhone(phone);
     if (clean.isEmpty) return const SizedBox.shrink();
@@ -98,52 +107,57 @@ class PilotDialogs {
 
   static Future<void> editSenderEmail(BuildContext context, String clientId, String name, String currentEmail) async {
     final ctrl = TextEditingController(text: currentEmail);
+    bool isSaving = false;
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF111827),
-        title: Text('Sender Email - $name', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Type the Gmail that will show in From: for this client. Must match the Gmail you connected.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              keyboardType: TextInputType.emailAddress,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'e.g. habeeb@gmail.com',
-                hintStyle: const TextStyle(color: Color(0xFF6B7280)),
-                filled: true,
-                fillColor: const Color(0xFF090D16),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setSB) => AlertDialog(
+          backgroundColor: const Color(0xFF111827),
+          title: Text('Sender Email - $name', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Type the Gmail that will show in From: for this client. Must match the Gmail you connected.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                keyboardType: TextInputType.emailAddress,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'e.g. habeeb@gmail.com',
+                  hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+                  filled: true,
+                  fillColor: const Color(0xFF090D16),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
+                ),
               ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: isSaving ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              onPressed: isSaving ? null : () async {
+                final email = ctrl.text.trim();
+                if (email.isEmpty || !email.contains('@')) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter a valid email.'), backgroundColor: Colors.red));
+                  return;
+                }
+                setSB(() => isSaving = true);
+                try {
+                  await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'email': email, 'gmail': email, 'gmail_email': email, 'sender_email': email}, SetOptions(merge: true));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sender email saved for $name.'), backgroundColor: const Color(0xFF10B981)));
+                } catch (e) {
+                  if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                  setSB(() => isSaving = false);
+                }
+              },
+              child: Text(isSaving ? 'Saving...' : 'Save', style: const TextStyle(color: Colors.white)),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
-            onPressed: () async {
-              final email = ctrl.text.trim();
-              if (email.isEmpty || !email.contains('@')) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter a valid email.'), backgroundColor: Colors.red));
-                return;
-              }
-              try {
-                await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'email': email, 'gmail': email, 'gmail_email': email, 'sender_email': email}, SetOptions(merge: true));
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sender email saved for $name.'), backgroundColor: const Color(0xFF10B981)));
-              } catch (e) {
-                if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
-              }
-            },
-            child: const Text('Save', style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }
@@ -203,107 +217,119 @@ class PilotDialogs {
 
   static Future<void> pasteCv(BuildContext context, String clientId, String name, String currentLink) async {
     final ctrl = TextEditingController(text: currentLink);
+    bool isSaving = false;
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF111827),
-        title: Text('CV Link - $name', style: const TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('1. Upload the CV to Google Drive\n2. Set sharing to Anyone with the link\n3. Paste the link below', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              style: const TextStyle(color: Colors.white),
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: 'https://drive.google.com/...',
-                hintStyle: const TextStyle(color: Color(0xFF6B7280)),
-                filled: true,
-                fillColor: const Color(0xFF090D16),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setSB) => AlertDialog(
+          backgroundColor: const Color(0xFF111827),
+          title: Text('CV Link - $name', style: const TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('1. Upload the CV to Google Drive\n2. Set sharing to Anyone with the link\n3. Paste the link below', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                style: const TextStyle(color: Colors.white),
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'https://drive.google.com/...',
+                  hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+                  filled: true,
+                  fillColor: const Color(0xFF090D16),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
+                ),
               ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: isSaving ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+            if (currentLink.isNotEmpty)
+              TextButton(
+                onPressed: isSaving ? null : () async {
+                  setSB(() => isSaving = true);
+                  try {
+                    await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'cv_url': '', 'cvUrl': '', 'cvLink': ''}, SetOptions(merge: true));
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CV link removed')));
+                  } catch (e) {
+                    if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                    setSB(() => isSaving = false);
+                  }
+                },
+                child: const Text('Remove', style: TextStyle(color: Colors.red)),
+              ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              onPressed: isSaving ? null : () async {
+                final link = ctrl.text.trim();
+                if (link.isEmpty) return;
+                setSB(() => isSaving = true);
+                try {
+                  await FirebaseFirestore.instance.collection('clients').doc(clientId).set({
+                    'cv_url': link, 'cvUrl': link, 'cvLink': link, 'cv_uploaded_at': DateTime.now().toIso8601String(),
+                  }, SetOptions(merge: true));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('CV link saved for $name.'), backgroundColor: const Color(0xFF10B981)));
+                } catch (e) {
+                  if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                  setSB(() => isSaving = false);
+                }
+              },
+              child: Text(isSaving ? 'Saving...' : 'Save Link', style: const TextStyle(color: Colors.white)),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          if (currentLink.isNotEmpty)
-            TextButton(
-              onPressed: () async {
-                try {
-                  await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'cv_url': '', 'cvUrl': '', 'cvLink': ''}, SetOptions(merge: true));
-                  if (ctx.mounted) Navigator.pop(ctx);
-                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CV link removed')));
-                } catch (e) {
-                  if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
-                }
-              },
-              child: const Text('Remove', style: TextStyle(color: Colors.red)),
-            ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
-            onPressed: () async {
-              final link = ctrl.text.trim();
-              if (link.isEmpty) return;
-              try {
-                await FirebaseFirestore.instance.collection('clients').doc(clientId).set({
-                  'cv_url': link, 'cvUrl': link, 'cvLink': link, 'cv_uploaded_at': DateTime.now().toIso8601String(),
-                }, SetOptions(merge: true));
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('CV link saved for $name.'), backgroundColor: const Color(0xFF10B981)));
-              } catch (e) {
-                if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
-              }
-            },
-            child: const Text('Save Link', style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }
 
   static void showLimit(BuildContext context, String clientId, String name, dynamic current) {
     final ctrl = TextEditingController(text: (current ?? 10).toString());
+    bool isSaving = false;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF111827),
-        title: Text('Daily Limit - $name', style: const TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: ctrl,
-          keyboardType: TextInputType.number,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: '1-50, e.g. 5',
-            hintStyle: const TextStyle(color: Color(0xFF6B7280)),
-            filled: true,
-            fillColor: const Color(0xFF090D16),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setSB) => AlertDialog(
+          backgroundColor: const Color(0xFF111827),
+          title: Text('Daily Limit - $name', style: const TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: ctrl,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: '1-50, e.g. 5',
+              hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+              filled: true,
+              fillColor: const Color(0xFF090D16),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1F2937))),
+            ),
           ),
+          actions: [
+            TextButton(onPressed: isSaving ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+              onPressed: isSaving ? null : () async {
+                final v = int.tryParse(ctrl.text.trim()) ?? 0;
+                if (v < 1 || v > 50) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter a value between 1 and 50.'), backgroundColor: Colors.red));
+                  return;
+                }
+                setSB(() => isSaving = true);
+                try {
+                  await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'max_per_day': v}, SetOptions(merge: true));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Daily limit for $name set to $v.'), backgroundColor: const Color(0xFF10B981)));
+                } catch (e) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                  setSB(() => isSaving = false);
+                }
+              },
+              child: Text(isSaving ? 'Saving...' : 'Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () async {
-              final v = int.tryParse(ctrl.text.trim()) ?? 0;
-              if (v < 1 || v > 50) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter a value between 1 and 50.'), backgroundColor: Colors.red));
-                return;
-              }
-              try {
-                await FirebaseFirestore.instance.collection('clients').doc(clientId).set({'max_per_day': v}, SetOptions(merge: true));
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Daily limit for $name set to $v.'), backgroundColor: const Color(0xFF10B981)));
-              } catch (e) {
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
@@ -313,72 +339,95 @@ class PilotDialogs {
     final cyclesCtrl = TextEditingController(text: '3');
     final sleepCtrl = TextEditingController(text: '6');
     final waitCtrl = TextEditingController(text: '15');
+    bool isSaving = false;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF111827),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      // FIX: Load settings ONCE before showing sheet content, not inside builder loop
-      builder: (ctx) => FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance.collection('bot_config').doc('settings').get(),
-        builder: (ctx2, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator(color: Color(0xFF10B981))));
-          }
-          // FIX: Only set text once - check if controllers still have defaults
-          if (snap.hasData && snap.data!.exists) {
-            final d = snap.data!.data() as Map<String, dynamic>;
-            if (maxCtrl.text == '20') maxCtrl.text = (d['max_per_day'] ?? 20).toString();
-            if (cyclesCtrl.text == '3') cyclesCtrl.text = (d['max_cycles_per_day'] ?? 3).toString();
-            if (sleepCtrl.text == '6') sleepCtrl.text = (d['cycle_sleep_hours'] ?? 6).toString();
-            if (waitCtrl.text == '15') waitCtrl.text = (d['wait_between_minutes'] ?? 15).toString();
-          }
-          return Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx2).viewInsets.bottom, left: 20, right: 20, top: 20),
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Bot Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
-                  const SizedBox(height: 4),
-                  const Text('Changes apply to the next cycle. No restart is required. A client daily limit overrides the global limit.', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
-                  const SizedBox(height: 16),
-                  _textField(maxCtrl, 'Max emails per day (global) e.g. 20'),
-                  const SizedBox(height: 10),
-                  _textField(cyclesCtrl, 'Cycles per day e.g. 3'),
-                  const SizedBox(height: 10),
-                  _textField(sleepCtrl, 'Hours between cycles e.g. 6'),
-                  const SizedBox(height: 10),
-                  _textField(waitCtrl, 'Minutes between each email e.g. 15'),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                      onPressed: () async {
-                        try {
-                          await FirebaseFirestore.instance.collection('bot_config').doc('settings').set({
-                            'max_per_day': int.tryParse(maxCtrl.text.trim()) ?? 20,
-                            'max_cycles_per_day': int.tryParse(cyclesCtrl.text.trim()) ?? 3,
-                            'cycle_sleep_hours': int.tryParse(sleepCtrl.text.trim()) ?? 6,
-                            'wait_between_minutes': int.tryParse(waitCtrl.text.trim()) ?? 15,
-                          }, SetOptions(merge: true));
-                          if (ctx.mounted) Navigator.pop(ctx);
-                          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bot settings saved.'), backgroundColor: Color(0xFF10B981)));
-                        } catch (e) {
-                          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
-                        }
-                      },
-                      child: const Text('Save Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setSB) => FutureBuilder<DocumentSnapshot>(
+          // PROFESSIONAL: Cache first, no server block - instant
+          future: FirebaseFirestore.instance.collection('bot_config').doc('settings').get(),
+          builder: (ctx3, snap) {
+            // PROFESSIONAL: Skeleton, not blank spinner
+            if (snap.connectionState == ConnectionState.waiting) {
+              return Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Bot Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+                    const SizedBox(height: 16),
+                    _skeletonBox(height: 48),
+                    const SizedBox(height: 10),
+                    _skeletonBox(height: 48),
+                    const SizedBox(height: 10),
+                    _skeletonBox(height: 48),
+                    const SizedBox(height: 16),
+                    const Text('Loading settings...', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              );
+            }
+            if (snap.hasData && snap.data!.exists) {
+              final d = snap.data!.data() as Map<String, dynamic>;
+              if (maxCtrl.text == '20') maxCtrl.text = (d['max_per_day'] ?? 20).toString();
+              if (cyclesCtrl.text == '3') cyclesCtrl.text = (d['max_cycles_per_day'] ?? 3).toString();
+              if (sleepCtrl.text == '6') sleepCtrl.text = (d['cycle_sleep_hours'] ?? 6).toString();
+              if (waitCtrl.text == '15') waitCtrl.text = (d['wait_between_minutes'] ?? 15).toString();
+            }
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx2).viewInsets.bottom, left: 20, right: 20, top: 20),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Bot Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+                    const SizedBox(height: 4),
+                    const Text('Changes apply to the next cycle. No restart is required. A client daily limit overrides the global limit.', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                    const SizedBox(height: 16),
+                    _textField(maxCtrl, 'Max emails per day (global) e.g. 20'),
+                    const SizedBox(height: 10),
+                    _textField(cyclesCtrl, 'Cycles per day e.g. 3'),
+                    const SizedBox(height: 10),
+                    _textField(sleepCtrl, 'Hours between cycles e.g. 6'),
+                    const SizedBox(height: 10),
+                    _textField(waitCtrl, 'Minutes between each email e.g. 15'),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        onPressed: isSaving ? null : () async {
+                          setSB(() => isSaving = true);
+                          try {
+                            await FirebaseFirestore.instance.collection('bot_config').doc('settings').set({
+                              'max_per_day': int.tryParse(maxCtrl.text.trim()) ?? 20,
+                              'max_cycles_per_day': int.tryParse(cyclesCtrl.text.trim()) ?? 3,
+                              'cycle_sleep_hours': int.tryParse(sleepCtrl.text.trim()) ?? 6,
+                              'wait_between_minutes': int.tryParse(waitCtrl.text.trim()) ?? 15,
+                            }, SetOptions(merge: true));
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bot settings saved.'), backgroundColor: Color(0xFF10B981)));
+                          } catch (e) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                            setSB(() => isSaving = false);
+                          }
+                        },
+                        child: Text(isSaving ? 'Saving...' : 'Save Settings', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -397,6 +446,7 @@ class PilotDialogs {
     final projectResultCtrl = TextEditingController();
     final experienceCtrl = TextEditingController();
     String type = 'freelancer';
+    bool isSaving = false;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -474,7 +524,7 @@ class PilotDialogs {
                   width: double.infinity,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                    onPressed: () async {
+                    onPressed: isSaving ? null : () async {
                       final name = nameCtrl.text.trim();
                       if (name.isEmpty) {
                         ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter the client name.'), backgroundColor: Colors.red));
@@ -484,6 +534,7 @@ class PilotDialogs {
                         ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Job seekers require a position and location.'), backgroundColor: Colors.red));
                         return;
                       }
+                      setSB(() => isSaving = true);
                       final id = PilotHelpers.clientSlug(name);
                       try {
                         await FirebaseFirestore.instance.collection('clients').doc(id).set({
@@ -501,9 +552,10 @@ class PilotDialogs {
                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Client $name added. Next: add the CV link and share the Gmail connect link.'), backgroundColor: const Color(0xFF10B981)));
                       } catch (e) {
                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: Colors.red));
+                        setSB(() => isSaving = false);
                       }
                     },
-                    child: const Text('Save Client', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    child: Text(isSaving ? 'Saving...' : 'Save Client', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -520,49 +572,54 @@ class PilotDialogs {
     final projectCtrl = TextEditingController(text: (c['project_1'] ?? c['project'] ?? '').toString());
     final resultCtrl = TextEditingController(text: (c['project_1_result'] ?? c['project_result'] ?? '').toString());
     final expCtrl = TextEditingController(text: (c['experience'] ?? '').toString());
+    bool isSaving = false;
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF111827),
-        title: Text('Proof - $name', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-        content: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Ask client 3 questions. This proof goes into EVERY email.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-              const SizedBox(height: 12),
-              _textField(skillsCtrl, 'Q1: Tools? e.g. Excel, Power BI, Python'),
-              const SizedBox(height: 10),
-              _textField(projectCtrl, 'Q2: What work did you do?'),
-              const SizedBox(height: 10),
-              _textField(resultCtrl, 'Q3: What was the result?'),
-              const SizedBox(height: 10),
-              _textField(expCtrl, 'Experience (optional)'),
-            ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setSB) => AlertDialog(
+          backgroundColor: const Color(0xFF111827),
+          title: Text('Proof - $name', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+          content: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Ask client 3 questions. This proof goes into EVERY email.', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+                const SizedBox(height: 12),
+                _textField(skillsCtrl, 'Q1: Tools? e.g. Excel, Power BI, Python'),
+                const SizedBox(height: 10),
+                _textField(projectCtrl, 'Q2: What work did you do?'),
+                const SizedBox(height: 10),
+                _textField(resultCtrl, 'Q3: What was the result?'),
+                const SizedBox(height: 10),
+                _textField(expCtrl, 'Experience (optional)'),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: isSaving ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              onPressed: isSaving ? null : () async {
+                setSB(() => isSaving = true);
+                try {
+                  await FirebaseFirestore.instance.collection('clients').doc(clientId).set({
+                    'skills': skillsCtrl.text.trim(), 'project_1': projectCtrl.text.trim(),
+                    'project_1_result': resultCtrl.text.trim(), 'experience': expCtrl.text.trim(),
+                    'proof_updated_at': DateTime.now().toIso8601String(),
+                  }, SetOptions(merge: true));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Proof saved for $name.'), backgroundColor: const Color(0xFF10B981)));
+                } catch (e) {
+                  if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                  setSB(() => isSaving = false);
+                }
+              },
+              child: Text(isSaving ? 'Saving...' : 'Save Proof', style: const TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
-            onPressed: () async {
-              try {
-                await FirebaseFirestore.instance.collection('clients').doc(clientId).set({
-                  'skills': skillsCtrl.text.trim(), 'project_1': projectCtrl.text.trim(),
-                  'project_1_result': resultCtrl.text.trim(), 'experience': expCtrl.text.trim(),
-                  'proof_updated_at': DateTime.now().toIso8601String(),
-                }, SetOptions(merge: true));
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Proof saved for $name.'), backgroundColor: const Color(0xFF10B981)));
-              } catch (e) {
-                if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
-              }
-            },
-            child: const Text('Save Proof', style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }
@@ -573,6 +630,7 @@ class PilotDialogs {
     final customSkillCtrl = TextEditingController();
     String jobType = 'FLUTTER';
     String selectedClient = activeClientId;
+    bool isSaving = false;
     const jobTypes = ['FLUTTER', 'BACKEND', 'AI', 'LLM', 'FULLSTACK', 'NURSE', 'ACCOUNTANT', 'TEACHER', 'DRIVER', 'CHEF', 'CUSTOM'];
     showModalBottomSheet(
       context: context,
@@ -625,7 +683,7 @@ class PilotDialogs {
                   width: double.infinity,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                    onPressed: () async {
+                    onPressed: isSaving ? null : () async {
                       final company = companyCtrl.text.trim();
                       if (company.isEmpty) {
                         ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please enter a company name.'), backgroundColor: Colors.red));
@@ -670,6 +728,7 @@ class PilotDialogs {
                         );
                         if (proceed2 != true || !context.mounted) return;
                       }
+                      setSB(() => isSaving = true);
                       try {
                         final clientName = selClient.isNotEmpty ? (selClient.first['name'] ?? '').toString() : '';
                         await FirebaseFirestore.instance.collection('pending_jobs').add({
@@ -682,9 +741,10 @@ class PilotDialogs {
                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Manual request queued for $finalSkill. The bot will process it shortly.'), backgroundColor: const Color(0xFF10B981)));
                       } catch (e) {
                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+                        setSB(() => isSaving = false);
                       }
                     },
-                    child: const Text('Queue Manual Send', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    child: Text(isSaving ? 'Queueing...' : 'Queue Manual Send', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -705,12 +765,38 @@ class PilotDialogs {
       builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
         future: PilotHelpers.fetchMergedDetail(j),
         builder: (ctx, snap) {
+          // PROFESSIONAL: Show instant preview from j while merged detail loads - never blank
+          // If loading, show j instantly + skeleton for body. If loaded, show merged.
+          if (snap.connectionState == ConnectionState.waiting) {
+            final company = (j['company'] ?? 'Unknown').toString();
+            final email = (j['email'] ?? '').toString();
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4)))),
+                  const SizedBox(height: 16),
+                  Text(company, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+                  const SizedBox(height: 4),
+                  Text(email, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                  const SizedBox(height: 16),
+                  _skeletonBox(height: 80),
+                  const SizedBox(height: 12),
+                  _skeletonBox(height: 160),
+                  const SizedBox(height: 12),
+                  const Text('Loading full email...', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            );
+          }
           final merged = snap.data ?? j;
           final company = (merged['company'] ?? 'Unknown').toString();
           final email = (merged['email'] ?? '').toString();
           final phone = PilotHelpers.cleanPhone(merged['phone']);
           final jobType = (merged['job_type'] ?? merged['skill'] ?? 'FLUTTER').toString();
-          // FIX: Try all date fields, not just timestamp
           final dateStr = PilotHelpers.formatDate(merged['timestamp'] ?? merged['date'] ?? merged['sent_at'] ?? merged['created_at']);
           final subject = PilotHelpers.buildSubject(merged);
           final body = PilotHelpers.buildEmailBody(merged);
