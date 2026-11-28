@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class QueuePage extends StatelessWidget {
+class QueuePage extends StatefulWidget {
   final bool Function(Map<String, dynamic>) matchesManualFilter;
   final Color Function(String) manualStatusColor;
   final String Function(String) manualStatusLabel;
@@ -15,35 +15,13 @@ class QueuePage extends StatelessWidget {
     required this.onShowManualActions,
   });
 
-  Widget _skeletonRow() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      height: 64,
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1F2937)),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(8))),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(width: 140, height: 11, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-                const SizedBox(height: 8),
-                Container(width: 200, height: 9, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  @override
+  State<QueuePage> createState() => _QueuePageState();
+}
+
+class _QueuePageState extends State<QueuePage> {
+  // FIX: Keep last data - show instantly, never skeleton
+  List<QueryDocumentSnapshot>? _lastDocs;
 
   @override
   Widget build(BuildContext context) {
@@ -58,15 +36,15 @@ class QueuePage extends StatelessWidget {
           const Text('Long-press an item to Retry or Delete.', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
           const SizedBox(height: 10),
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(),
+            stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(includeMetadataChanges: true),
             builder: (context, snap) {
-              // NO LOADING - skeleton, header stays visible
-              if (!snap.hasData) {
-                return Column(children: [_skeletonRow(), _skeletonRow(), _skeletonRow()]);
-              }
-              final docs = snap.data!.docs.where((d) {
+              if (snap.hasData) _lastDocs = snap.data!.docs;
+              // First open with no cache yet: show nothing, not skeleton
+              if (!snap.hasData && _lastDocs == null) return const SizedBox.shrink();
+              final allDocs = _lastDocs ?? [];
+              final docs = allDocs.where((d) {
                 final m = d.data() as Map<String, dynamic>;
-                return matchesManualFilter(m);
+                return widget.matchesManualFilter(m);
               }).toList();
               if (docs.isEmpty) {
                 return const Card(
@@ -89,16 +67,16 @@ class QueuePage extends StatelessWidget {
                       border: Border.all(color: const Color(0xFF1F2937)),
                     ),
                     child: ListTile(
-                      onLongPress: () => onShowManualActions(d.id, (m['company'] ?? '').toString(), st),
+                      onLongPress: () => widget.onShowManualActions(d.id, (m['company'] ?? '').toString(), st),
                       leading: Container(
                         width: 36,
                         height: 36,
-                        decoration: BoxDecoration(color: manualStatusColor(st).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                        child: Icon(Icons.schedule, color: manualStatusColor(st), size: 16),
+                        decoration: BoxDecoration(color: widget.manualStatusColor(st).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                        child: Icon(Icons.schedule, color: widget.manualStatusColor(st), size: 16),
                       ),
                       title: Text((m['company'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
                       subtitle: Text(
-                        '${m['email'] ?? ''} - ${manualStatusLabel(st)}${skillLabel.isNotEmpty ? ' - $skillLabel' : ''}',
+                        '${m['email'] ?? ''} - ${widget.manualStatusLabel(st)}${skillLabel.isNotEmpty ? ' - $skillLabel' : ''}',
                         style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
                       ),
                       trailing: const Icon(Icons.more_horiz, size: 16, color: Color(0xFF6B7280)),
