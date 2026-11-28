@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../app_state.dart';
 
 class ClientsPage extends StatefulWidget {
   final String activeClientId;
@@ -38,9 +38,6 @@ class ClientsPage extends StatefulWidget {
 }
 
 class _ClientsPageState extends State<ClientsPage> {
-  // FIX: Remember last sent list so we don't call onClientsUpdated in a loop
-  String _lastSentSignature = '';
-
   Widget _header() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -64,62 +61,55 @@ class _ClientsPageState extends State<ClientsPage> {
     );
   }
 
+  Widget _skeleton() {
+    return Column(
+      children: List.generate(2, (i) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        height: 180,
+        decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12)),
+      )),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(20),
-      child: StreamBuilder<QuerySnapshot>(
-        // FIX: NO includeMetadataChanges - reads directly from Firebase, no freeze loop
-        stream: FirebaseFirestore.instance.collection('clients').snapshots(),
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _header(),
-                const SizedBox(height: 12),
-                Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Firebase error: ${snap.error}', style: const TextStyle(color: Colors.red, fontSize: 12)))),
-              ],
-            );
-          }
-          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _header(),
-                const SizedBox(height: 20),
-                const Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
-              ],
-            );
-          }
-          final docs = snap.data?.docs ?? [];
-          final clients = docs.map((d) {
-            final m = Map<String, dynamic>.from(d.data() as Map<String, dynamic>);
-            m['id'] = d.id;
-            return m;
-          }).toList();
-          clients.sort((a, b) {
-            if ((a['id'] ?? '') == 'user') return -1;
-            if ((b['id'] ?? '') == 'user') return 1;
-            return 0;
-          });
+    // PROFESSIONAL: Listen to appState, not Firestore directly.
+    // main.dart already listens to clients ONCE. ClientsPage shows appState.clientsCache instantly.
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        // PROFESSIONAL: Instant from cache, sorted - user first
+        final clients = List<Map<String, dynamic>>.from(appState.clientsCache);
+        clients.sort((a, b) {
+          if ((a['id'] ?? '') == 'user') return -1;
+          if ((b['id'] ?? '') == 'user') return 1;
+          return 0;
+        });
 
-          // FIX: Only notify parent when list actually changed - stops setState loop / freeze
-          final signature = clients.map((c) => '${c['id']}:${c['name']}:${c['gmail_connected']}:${c['is_paused']}').join('|');
-          if (clients.isNotEmpty && signature != _lastSentSignature) {
-            _lastSentSignature = signature;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) widget.onClientsUpdated(clients);
-            });
-          }
-
-          return Column(
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _header(),
               const SizedBox(height: 6),
-              if (clients.isEmpty)
+              // PROFESSIONAL: Sync status like Gmail
+              Row(
+                children: [
+                  Text(appState.isSyncing ? 'Syncing...' : appState.lastSyncLabel, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                  if (appState.isSyncing) ...[
+                    const SizedBox(width: 6),
+                    const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF10B981))),
+                  ],
+                  const Spacer(),
+                  Text('${clients.length} clients', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // First open ever, no cache - skeleton, not 0, not spinner
+              if (clients.isEmpty && appState.isSyncing) _skeleton()
+              else if (clients.isEmpty)
                 const Card(
                   child: Padding(
                     padding: EdgeInsets.all(16),
@@ -382,9 +372,9 @@ class _ClientsPageState extends State<ClientsPage> {
               }),
               const SizedBox(height: 40),
             ],
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
