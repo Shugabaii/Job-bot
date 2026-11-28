@@ -13,10 +13,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    // FIX: Instant data - keep data on phone, show it immediately, no skeleton wait
+    // FIX: Read from FIREBASE SERVER, not phone cache.
+    // Cache was showing old 0 data and freezing the app.
     FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      persistenceEnabled: false,
     );
   } catch (e) {
     debugPrint('Firebase init error: $e');
@@ -82,23 +82,20 @@ class _DashboardState extends State<Dashboard> {
   @override
   void initState() {
     super.initState();
-    _ensureDefaultUser();
-    _loadActiveClient();
+    // FIX: Don't block UI - run in background, don't await
+    Future.microtask(() async {
+      await _ensureDefaultUser();
+      await _loadActiveClient();
+    });
   }
 
   Future<void> _ensureDefaultUser() async {
     try {
       final ref = FirebaseFirestore.instance.collection('clients').doc('user');
-      // FIX: Try cache first - instant, no waiting for internet
-      DocumentSnapshot doc;
-      try {
-        doc = await ref.get(const GetOptions(source: Source.cache));
-        if (!doc.exists) {
-          doc = await ref.get(const GetOptions(source: Source.server));
-        }
-      } catch (_) {
-        doc = await ref.get();
-      }
+      // FIX: Always read from SERVER (Firebase), never from phone cache
+      DocumentSnapshot doc = await ref
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 10));
       if (!doc.exists) {
         await ref.set({
           'name': 'Habibu Armayau Isah',
@@ -137,7 +134,9 @@ class _DashboardState extends State<Dashboard> {
           await ref.set({'client_type': 'freelancer'}, SetOptions(merge: true));
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('ensureDefaultUser error (will retry next open): $e');
+    }
   }
 
   String get _activeClientDisplayName {
@@ -152,21 +151,20 @@ class _DashboardState extends State<Dashboard> {
 
   Future<void> _loadActiveClient() async {
     try {
-      DocumentSnapshot doc;
-      try {
-        doc = await FirebaseFirestore.instance.collection('bot_config').doc('active').get(const GetOptions(source: Source.cache));
-        if (!doc.exists) {
-          doc = await FirebaseFirestore.instance.collection('bot_config').doc('active').get(const GetOptions(source: Source.server));
-        }
-      } catch (_) {
-        doc = await FirebaseFirestore.instance.collection('bot_config').doc('active').get();
-      }
+      // FIX: Read from SERVER, not cache
+      final doc = await FirebaseFirestore.instance
+          .collection('bot_config')
+          .doc('active')
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 10));
       if (mounted) {
         setState(() => _activeClientId = doc.exists
             ? ((doc.data() as Map<String, dynamic>? ?? {})['active_client_id'] ?? (doc.data() as Map<String, dynamic>? ?? {})['client_id'] ?? 'user').toString()
             : 'user');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('loadActiveClient error: $e');
+    }
   }
 
   Future<void> _setActiveClient(String clientId) async {
@@ -292,7 +290,7 @@ class _DashboardState extends State<Dashboard> {
     } else if (action == 'delete') {
       try {
         await FirebaseFirestore.instance.collection('pending_jobs').doc(docId).delete();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Manual job deleted.'), backgroundColor: Color(0xFF10B981)));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Manual job deleted.'), backgroundColor: Color(0xFF10B981)));
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red));
       }
@@ -371,7 +369,7 @@ class _DashboardState extends State<Dashboard> {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: Image.asset(
-                'assets/icon/icon.png',
+                'logo.png',
                 width: 38,
                 height: 38,
                 fit: BoxFit.cover,
@@ -417,7 +415,8 @@ class _DashboardState extends State<Dashboard> {
               label: const Text('Send Manually', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
             )
           : null,
-      body: IndexedStack(index: _currentIndex, children: pages),
+      // FIX: Only show the current page - before IndexedStack loaded all 4 pages at once from Firebase = freeze
+      body: pages[_currentIndex],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         backgroundColor: const Color(0xFF111827),
