@@ -18,7 +18,7 @@ class QueuePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -30,6 +30,16 @@ class QueuePage extends StatelessWidget {
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('pending_jobs').orderBy('created_at', descending: true).limit(20).snapshots(),
             builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Column(
+                  children: [
+                    SizedBox(height: 40),
+                    Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
+                    SizedBox(height: 16),
+                    Text('Loading queue...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
+                  ],
+                );
+              }
               if (!snap.hasData) return const SizedBox.shrink();
               final docs = snap.data!.docs.where((d) {
                 final m = d.data() as Map<String, dynamic>;
