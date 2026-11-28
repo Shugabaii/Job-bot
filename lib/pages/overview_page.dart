@@ -50,6 +50,56 @@ class OverviewPage extends StatelessWidget {
     );
   }
 
+  // SKELETON - looks like real UI, no spinner, no "Loading..."
+  Widget _skeletonMetric() {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111827),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF1F2937)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(width: 70, height: 10, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+            const SizedBox(height: 12),
+            Container(width: 40, height: 20, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+            const SizedBox(height: 10),
+            Container(width: 90, height: 8, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _skeletonBlock({double height = 180}) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF1F2937)),
+      ),
+    );
+  }
+
+  Widget _skeletonOverview() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _skeletonBlock(height: 210),
+        const SizedBox(height: 16),
+        _skeletonBlock(height: 140),
+        const SizedBox(height: 12),
+        Row(children: [_skeletonMetric(), const SizedBox(width: 12), _skeletonMetric()]),
+        const SizedBox(height: 12),
+        Row(children: [_skeletonMetric(), const SizedBox(width: 12), _skeletonMetric()]),
+      ],
+    );
+  }
+
   Widget _systemRow(String title, String status) {
     return Row(
       children: [
@@ -117,14 +167,9 @@ class OverviewPage extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('jobs_replies').snapshots(),
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return Row(
-            children: [
-              _metric('Replies', '...', Icons.mark_email_read_outlined, 'Loading...'),
-              const SizedBox(width: 12),
-              _metric('Reply Rate', '...', Icons.trending_up, 'Loading...'),
-            ],
-          );
+        // NO LOADING - show skeleton, not "... Loading..."
+        if (!snap.hasData) {
+          return Row(children: [_skeletonMetric(), const SizedBox(width: 12), _skeletonMetric()]);
         }
         final all = snap.data?.docs ?? [];
         final filtered = all.where((d) => matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
@@ -205,16 +250,9 @@ class OverviewPage extends StatelessWidget {
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).snapshots(),
                   builder: (context, sentSnap) {
-                    if (sentSnap.connectionState == ConnectionState.waiting) {
-                      return const Column(
-                        children: [
-                          SizedBox(height: 60),
-                          Center(child: CircularProgressIndicator(color: Color(0xFF10B981))),
-                          SizedBox(height: 16),
-                          Text('Loading your emails...', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
-                          SizedBox(height: 20),
-                        ],
-                      );
+                    // NO MORE LOADING SCREEN - skeleton instead
+                    if (!sentSnap.hasData) {
+                      return _skeletonOverview();
                     }
                     final allDocs = sentSnap.data?.docs ?? [];
                     final filtered = allDocs.where((d) {
