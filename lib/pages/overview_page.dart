@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class OverviewPage extends StatelessWidget {
+class OverviewPage extends StatefulWidget {
   final String activeClientDisplayName;
   final bool Function(Map<String, dynamic>) matchesClientFilter;
   final DateTime? Function(dynamic) parseDate;
@@ -20,6 +20,17 @@ class OverviewPage extends StatelessWidget {
     required this.onOpenSettings,
     required this.onRefresh,
   });
+
+  @override
+  State<OverviewPage> createState() => _OverviewPageState();
+}
+
+class _OverviewPageState extends State<OverviewPage> {
+  // FIX: Keep last data - show it instantly, never show skeleton / empty boxes
+  List<QueryDocumentSnapshot>? _lastSentDocs;
+  Map<String, dynamic>? _lastStatusData;
+  int _lastRepliesCount = 0;
+  bool _hasEverLoadedReplies = false;
 
   Widget _metric(String title, String value, IconData icon, String sub) {
     return Expanded(
@@ -50,56 +61,6 @@ class OverviewPage extends StatelessWidget {
     );
   }
 
-  // SKELETON - looks like real UI, no spinner, no "Loading..."
-  Widget _skeletonMetric() {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111827),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF1F2937)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(width: 70, height: 10, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-            const SizedBox(height: 12),
-            Container(width: 40, height: 20, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-            const SizedBox(height: 10),
-            Container(width: 90, height: 8, decoration: BoxDecoration(color: const Color(0xFF1F2937), borderRadius: BorderRadius.circular(4))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _skeletonBlock({double height = 180}) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1F2937)),
-      ),
-    );
-  }
-
-  Widget _skeletonOverview() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _skeletonBlock(height: 210),
-        const SizedBox(height: 16),
-        _skeletonBlock(height: 140),
-        const SizedBox(height: 12),
-        Row(children: [_skeletonMetric(), const SizedBox(width: 12), _skeletonMetric()]),
-        const SizedBox(height: 12),
-        Row(children: [_skeletonMetric(), const SizedBox(width: 12), _skeletonMetric()]),
-      ],
-    );
-  }
-
   Widget _systemRow(String title, String status) {
     return Row(
       children: [
@@ -118,13 +79,13 @@ class OverviewPage extends StatelessWidget {
     final Map<String, int> perDay = {};
     for (var i = 6; i >= 0; i--) {
       final d = now.subtract(Duration(days: i));
-      perDay[dayKey(d)] = 0;
+      perDay[widget.dayKey(d)] = 0;
     }
     for (final d in docs) {
       final m = d.data() as Map<String, dynamic>;
-      final dt = parseDate(m['timestamp'] ?? m['date']);
+      final dt = widget.parseDate(m['timestamp'] ?? m['date']);
       if (dt == null) continue;
-      final k = dayKey(dt);
+      final k = widget.dayKey(dt);
       if (perDay.containsKey(k)) perDay[k] = (perDay[k] ?? 0) + 1;
     }
     final maxV = perDay.values.fold<int>(1, (a, b) => b > a ? b : a);
@@ -151,7 +112,7 @@ class OverviewPage extends StatelessWidget {
                         decoration: BoxDecoration(color: const Color(0xFF10B981), borderRadius: BorderRadius.circular(4)),
                       ),
                       const SizedBox(height: 4),
-                      Text(dayLabel(DateTime.parse(e.key)), style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
+                      Text(widget.dayLabel(DateTime.parse(e.key)), style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
                     ],
                   ),
                 );
@@ -165,15 +126,16 @@ class OverviewPage extends StatelessWidget {
 
   Widget _repliesMetrics(int totalSent) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('jobs_replies').snapshots(),
+      stream: FirebaseFirestore.instance.collection('jobs_replies').snapshots(includeMetadataChanges: true),
       builder: (context, snap) {
-        // NO LOADING - show skeleton, not "... Loading..."
-        if (!snap.hasData) {
-          return Row(children: [_skeletonMetric(), const SizedBox(width: 12), _skeletonMetric()]);
+        // FIX: No skeleton. Show last known replies instantly, or 0 if never loaded.
+        if (snap.hasData) {
+          final all = snap.data?.docs ?? [];
+          final filtered = all.where((d) => widget.matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
+          _lastRepliesCount = filtered.length;
+          _hasEverLoadedReplies = true;
         }
-        final all = snap.data?.docs ?? [];
-        final filtered = all.where((d) => matchesClientFilter(d.data() as Map<String, dynamic>)).toList();
-        final replies = filtered.length;
+        final replies = _hasEverLoadedReplies ? _lastRepliesCount : 0;
         double rate = 0.0;
         if (totalSent > 0) {
           rate = (replies / totalSent * 100);
@@ -194,7 +156,7 @@ class OverviewPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
-      onRefresh: () async => onRefresh(),
+      onRefresh: () async => widget.onRefresh(),
       color: const Color(0xFF10B981),
       backgroundColor: const Color(0xFF111827),
       child: SingleChildScrollView(
@@ -217,7 +179,7 @@ class OverviewPage extends StatelessWidget {
                 Row(
                   children: [
                     IconButton(
-                      onPressed: onOpenSettings,
+                      onPressed: widget.onOpenSettings,
                       icon: const Icon(Icons.settings, size: 18, color: Color(0xFF9CA3AF)),
                       style: IconButton.styleFrom(
                         backgroundColor: const Color(0xFF111827),
@@ -227,7 +189,7 @@ class OverviewPage extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      onPressed: onRefresh,
+                      onPressed: widget.onRefresh,
                       icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF9CA3AF)),
                       style: IconButton.styleFrom(
                         backgroundColor: const Color(0xFF111827),
@@ -241,29 +203,33 @@ class OverviewPage extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance.collection('bot_status').doc('current').snapshots(),
+              stream: FirebaseFirestore.instance.collection('bot_status').doc('current').snapshots(includeMetadataChanges: true),
               builder: (context, statusSnap) {
-                final data = statusSnap.data?.data() as Map<String, dynamic>?;
+                if (statusSnap.hasData && statusSnap.data?.data() != null) {
+                  _lastStatusData = statusSnap.data!.data() as Map<String, dynamic>;
+                }
+                final data = _lastStatusData;
                 final rawCompany = (data?['last_company'] ?? '').toString().trim();
                 final lastCompany = (rawCompany.isEmpty || rawCompany.startsWith('Waiting ')) ? 'Waiting' : rawCompany;
                 final lastRun = (data?['last_run'] ?? 'No recent activity').toString();
                 return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).snapshots(),
+                  stream: FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).snapshots(includeMetadataChanges: true),
                   builder: (context, sentSnap) {
-                    // NO MORE LOADING SCREEN - skeleton instead
-                    if (!sentSnap.hasData) {
-                      return _skeletonOverview();
+                    // FIX: No skeleton. Use last data if still loading.
+                    if (sentSnap.hasData) {
+                      _lastSentDocs = sentSnap.data?.docs ?? [];
                     }
-                    final allDocs = sentSnap.data?.docs ?? [];
+                    // First ever open with truly no data yet: show real 0s, not grey boxes
+                    final allDocs = _lastSentDocs ?? [];
                     final filtered = allDocs.where((d) {
                       final m = d.data() as Map<String, dynamic>;
-                      return matchesClientFilter(m);
+                      return widget.matchesClientFilter(m);
                     }).toList();
                     final totalSent = filtered.length;
                     final sentTodayFirestore = filtered.where((d) {
                       final m = d.data() as Map<String, dynamic>;
-                      final dt = parseDate(m['timestamp']);
-                      return dt != null && dayKey(dt) == dayKey(DateTime.now());
+                      final dt = widget.parseDate(m['timestamp']);
+                      return dt != null && widget.dayKey(dt) == widget.dayKey(DateTime.now());
                     }).length;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,7 +285,7 @@ class OverviewPage extends StatelessWidget {
                                 const SizedBox(height: 8),
                                 _systemRow('Gmail', 'Connected'),
                                 const SizedBox(height: 8),
-                                _systemRow('Active Client', activeClientDisplayName),
+                                _systemRow('Active Client', widget.activeClientDisplayName),
                               ],
                             ),
                           ),
