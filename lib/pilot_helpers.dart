@@ -53,7 +53,6 @@ class PilotHelpers {
     return s.isEmpty ? 'client_${DateTime.now().millisecondsSinceEpoch}' : s;
   }
 
-  // FIX: jobs_sent has client_name, not name. Check client_name first.
   static String clientDisplayName(Map<String, dynamic> j) {
     final cn = (j['client_name'] ?? '').toString().trim();
     if (cn.isNotEmpty) return cn;
@@ -62,26 +61,32 @@ class PilotHelpers {
     final cid = (j['client_id'] ?? '').toString().trim();
     if (cid == 'user') return 'Habibu Armayau Isah';
     if (cid.isNotEmpty) return cid;
-    return 'Unknown';
+    return 'Habibu Armayau Isah';
   }
 
   static String senderEmailForClient(Map<String, dynamic> c) =>
-      (c['email'] ?? c['gmail'] ?? c['gmail_email'] ?? '').toString().trim();
+      (c['sender_email'] ?? c['email'] ?? c['gmail'] ?? c['gmail_email'] ?? '').toString().trim();
 
+  // FIX: Never hide data if doc has no client info - show it instead of 0
   static bool matchesClientFilter(
     Map<String, dynamic> j,
     String selectedClientFilter,
     List<Map<String, dynamic>> clientsCache,
   ) {
     if (selectedClientFilter == 'All') return true;
-    final cn = (j['client_name'] ?? '').toString().toLowerCase();
-    final cid = (j['client_id'] ?? '').toString().toLowerCase();
-    final f = selectedClientFilter.toLowerCase();
-    if (clientsCache.isEmpty) return true;
+    final cn = (j['client_name'] ?? '').toString().toLowerCase().trim();
+    final cid = (j['client_id'] ?? '').toString().toLowerCase().trim();
+    final f = selectedClientFilter.toLowerCase().trim();
+    // If doc has NO client info, don't hide it - it belongs to default user
+    if (cn.isEmpty && cid.isEmpty) return true;
     if (cid == f || cn == f) return true;
+    // 'user' filter should also match docs with no client or Habibu name
+    if (f == 'user' && (cid.isEmpty || cn.contains('habibu') || cn.contains('habeeb'))) return true;
+    if (clientsCache.isEmpty) return true;
     final match = clientsCache.where((c) => (c['id'] ?? '').toString().toLowerCase() == f).toList();
-    if (match.isEmpty) return false;
+    if (match.isEmpty) return true; // FIX: Don't hide if client not found in cache
     final name = (match.first['name'] ?? '').toString().toLowerCase();
+    if (name.isEmpty) return true;
     return cn == name || cid == f || cn == f;
   }
 
@@ -91,13 +96,16 @@ class PilotHelpers {
     List<Map<String, dynamic>> clientsCache,
   ) {
     if (selectedClientFilter == 'All') return true;
-    final cid = (j['client_id'] ?? '').toString().toLowerCase();
-    final cn = (j['client_name'] ?? '').toString().toLowerCase();
-    final f = selectedClientFilter.toLowerCase();
+    final cid = (j['client_id'] ?? '').toString().toLowerCase().trim();
+    final cn = (j['client_name'] ?? '').toString().toLowerCase().trim();
+    final f = selectedClientFilter.toLowerCase().trim();
+    if (cid.isEmpty && cn.isEmpty) return true;
     if (cid == f || cn == f) return true;
+    if (f == 'user' && (cid.isEmpty || cn.contains('habibu') || cn.contains('habeeb'))) return true;
     if (clientsCache.isEmpty) return true;
     final match = clientsCache.where((c) => (c['id'] ?? '').toString().toLowerCase() == f).toList();
-    return match.isNotEmpty && cn == (match.first['name'] ?? '').toString().toLowerCase();
+    if (match.isEmpty) return true;
+    return cn == (match.first['name'] ?? '').toString().toLowerCase();
   }
 
   static String cleanPhone(dynamic raw) =>
@@ -160,22 +168,40 @@ class PilotHelpers {
     }
   }
 
+  // FIX: Handle ALL date types - Timestamp, String, int millis, DateTime
   static String formatDate(dynamic ts) {
-    if (ts == null) return '';
-    if (ts is Timestamp) {
-      final d = ts.toDate();
-      return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-    }
-    final s = ts.toString();
-    return s.length > 16 ? s.substring(0, 16).replaceAll('T', ' ') : s;
+    final dt = parseDate(ts);
+    if (dt == null) return '';
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
   static DateTime? parseDate(dynamic ts) {
     if (ts == null) return null;
     try {
       if (ts is Timestamp) return ts.toDate();
-      final s = ts.toString();
-      return s.isEmpty ? null : DateTime.tryParse(s);
+      if (ts is DateTime) return ts;
+      if (ts is int) {
+        // Could be seconds or milliseconds
+        if (ts > 1000000000000) return DateTime.fromMillisecondsSinceEpoch(ts);
+        if (ts > 1000000000) return DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+        return null;
+      }
+      if (ts is double) return DateTime.fromMillisecondsSinceEpoch(ts.toInt());
+      final s = ts.toString().trim();
+      if (s.isEmpty) return null;
+      // Try ISO first
+      var parsed = DateTime.tryParse(s);
+      if (parsed != null) return parsed;
+      // Try "2026-11-28 14:30:00" with space
+      parsed = DateTime.tryParse(s.replaceAll(' ', 'T'));
+      if (parsed != null) return parsed;
+      // Try int as string
+      final asInt = int.tryParse(s);
+      if (asInt != null) {
+        if (asInt > 1000000000000) return DateTime.fromMillisecondsSinceEpoch(asInt);
+        if (asInt > 1000000000) return DateTime.fromMillisecondsSinceEpoch(asInt * 1000);
+      }
+      return null;
     } catch (_) {
       return null;
     }
@@ -224,7 +250,6 @@ class PilotHelpers {
     final jobType = (j['job_type'] ?? j['skill'] ?? 'FLUTTER').toString();
     final why = (j['why'] ?? j['reason'] ?? '').toString().trim();
     final clientType = (j['client_type'] ?? '').toString();
-    // FIX: Use real client name, not hardcoded Habeeb for every client
     final clientName = (j['client_name'] ?? j['name'] ?? 'Habeeb Armaya\'u').toString().trim().isEmpty ? 'Habeeb Armaya\'u' : (j['client_name'] ?? j['name'] ?? 'Habeeb Armaya\'u').toString();
     final proofUsed = (j['proof_used'] ?? j['project_1'] ?? '').toString().trim();
     if (clientType == 'job_seeker') {
@@ -277,7 +302,7 @@ class PilotHelpers {
   static Future<void> whatsAppReport(Map<String, dynamic> j) async {
     final company = (j['company'] ?? 'Unknown').toString();
     final email = (j['email'] ?? '').toString();
-    final date = formatDate(j['timestamp']);
+    final date = formatDate(j['timestamp'] ?? j['date'] ?? j['sent_at'] ?? j['created_at']);
     final clientName = (j['client_name'] ?? '').toString();
     final report = 'CareerPilot AI Report\n\nCompany: $company\nEmail: $email\nDate: ${date.isEmpty ? 'Unknown' : date}${clientName.isNotEmpty ? '\nClient: $clientName' : ''}';
     await Share.share(report, subject: 'CareerPilot Report - $company');
@@ -288,7 +313,7 @@ class PilotHelpers {
     final email = (j['email'] ?? '').toString();
     final phone = cleanPhone(j['phone']).isNotEmpty ? cleanPhone(j['phone']) : 'Not available';
     final website = (j['website'] ?? j['company_website'] ?? '').toString().isNotEmpty ? (j['website'] ?? j['company_website']).toString() : 'Not available';
-    final date = formatDate(j['timestamp']);
+    final date = formatDate(j['timestamp'] ?? j['date'] ?? j['sent_at'] ?? j['created_at']);
     final subject = buildSubject(j);
     final body = buildEmailBody(j);
     final replyStatus = (j['reply_status'] ?? j['status'] ?? 'No reply yet').toString();
@@ -341,7 +366,8 @@ class PilotHelpers {
   }
 
   static Future<void> exportAllEmailsPdf(String selectedClientFilter, List<Map<String, dynamic>> clientsCache) async {
-    final snap = await FirebaseFirestore.instance.collection('jobs_sent').orderBy('timestamp', descending: true).limit(200).get();
+    // FIX: NO orderBy - was crashing export
+    final snap = await FirebaseFirestore.instance.collection('jobs_sent').limit(200).get();
     final docs = snap.docs.where((d) => matchesClientFilter(d.data(), selectedClientFilter, clientsCache)).toList();
     final doc = pw.Document();
     doc.addPage(
@@ -358,7 +384,7 @@ class PilotHelpers {
             final email = (j['email'] ?? '').toString();
             final phone = cleanPhone(j['phone']).isNotEmpty ? cleanPhone(j['phone']) : 'Not available';
             final website = (j['website'] ?? '').toString().isNotEmpty ? (j['website']).toString() : 'Not available';
-            final date = formatDate(j['timestamp']);
+            final date = formatDate(j['timestamp'] ?? j['date'] ?? j['sent_at'] ?? j['created_at']);
             final subject = buildSubject(j);
             final rs = (j['reply_status'] ?? 'No reply yet').toString();
             return pw.Container(
